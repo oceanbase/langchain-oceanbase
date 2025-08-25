@@ -1950,20 +1950,22 @@ rsa = ["cryptography"]
 
 [[package]]
 name = "pyobvector"
-version = "0.1.17"
+version = "0.2.15"
 description = "A python SDK for OceanBase Vector Store, based on SQLAlchemy, compatible with Milvus API."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "pyobvector-0.1.17-py3-none-any.whl", hash = "sha256:faf73d14ded736f21f2ce9d92d0964de9d477afeacfbf6d41db0b5b18495aadd"},
-    {file = "pyobvector-0.1.17.tar.gz", hash = "sha256:bfc89f8de88806b63d64d7dfc15e5f9890243387ba53cc69247de52a46045d5a"},
+    {file = "pyobvector-0.2.15-py3-none-any.whl", hash = "sha256:feeefe849ee5400e72a9a4d3844e425a58a99053dd02abe06884206923065ebb"},
+    {file = "pyobvector-0.2.15.tar.gz", hash = "sha256:5de258c1e952c88b385b5661e130c1cf8262c498c1f8a4a348a35962d379fce4"},
 ]
 
 [package.dependencies]
 aiomysql = ">=0.2.0,<0.3.0"
-numpy = ">=1.26.0,<2.0.0"
+numpy = ">=1.17.0,<2.0.0"
+pydantic = ">=2.7.0,<3"
 pymysql = ">=1.1.1,<2.0.0"
-sqlalchemy = ">=1.4,<2.0.36"
+sqlalchemy = ">=1.4,<=3"
+sqlglot = ">=26.0.1,<27.0.0"
 
 [[package]]
 name = "pytest"
