@@ -272,14 +272,14 @@ class OceanbaseVectorStore(VectorStore):
                 "IVF_PQ": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
                 "FLAT": DEFAULT_OCEANBASE_FLAT_BUILD_PARAM,
             }
-            
+
             self.vidx_algo_params = index_param_map[self.index_type].copy()
-            
+
             # Special handling for IVF_PQ: add 'm' parameter if not present
-            if self.index_type == "IVF_PQ" and 'm' not in self.vidx_algo_params:
+            if self.index_type == "IVF_PQ" and "m" not in self.vidx_algo_params:
                 # IVF_PQ requires 'm' parameter that must divide the embedding dimension
                 # Default to 3 as a reasonable divisor for most embedding dimensions
-                self.vidx_algo_params['m'] = 3
+                self.vidx_algo_params["m"] = 3
         else:
             self.vidx_algo_params = vidx_algo_params.copy()
             # Add index_type to params for internal use
@@ -402,7 +402,9 @@ class OceanbaseVectorStore(VectorStore):
             "IVF_PQ": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
             "FLAT": DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM,
         }
-        return search_param_map.get(self.index_type, DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM)
+        return search_param_map.get(
+            self.index_type, DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
+        )
 
     def add_texts(
         self,
@@ -621,10 +623,12 @@ class OceanbaseVectorStore(VectorStore):
             return []
 
         search_param = param if param is not None else self._get_default_search_params()
-        
+
         # Handle HNSW-specific efSearch parameter
         if self.index_type in ["HNSW", "HNSW_SQ"]:
-            ef_search = search_param.get("efSearch", self._get_default_search_params()["efSearch"])
+            ef_search = search_param.get(
+                "efSearch", self._get_default_search_params()["efSearch"]
+            )
             if ef_search != self.hnsw_ef_search:
                 self.obvector.set_ob_hnsw_ef_search(ef_search)
                 self.hnsw_ef_search = ef_search
@@ -676,10 +680,12 @@ class OceanbaseVectorStore(VectorStore):
             return []
 
         search_param = param if param is not None else self._get_default_search_params()
-        
+
         # Handle HNSW-specific efSearch parameter
         if self.index_type in ["HNSW", "HNSW_SQ"]:
-            ef_search = search_param.get("efSearch", self._get_default_search_params()["efSearch"])
+            ef_search = search_param.get(
+                "efSearch", self._get_default_search_params()["efSearch"]
+            )
             if ef_search != self.hnsw_ef_search:
                 self.obvector.set_ob_hnsw_ef_search(ef_search)
                 self.hnsw_ef_search = ef_search
