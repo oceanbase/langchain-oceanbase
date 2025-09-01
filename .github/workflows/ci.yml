@@ -110,6 +110,12 @@ jobs:
         echo "Running comprehensive tests..."
         poetry run python tests/test_comprehensive.py
 
+    - name: Run simple CI tests
+      run: |
+        set -e
+        echo "Running simple CI tests..."
+        poetry run python tests/test_ci_simple.py
+
     - name: Run integration tests
       run: |
         set -e
@@ -147,12 +153,13 @@ jobs:
           if [ "${{ needs.test.result }}" == "success" ]; then
             echo "🎉 All tests passed successfully!"
             echo "✅ Comprehensive tests passed"
-            echo "✅ Unit tests passed"
+            echo "✅ Simple CI tests passed"
             echo "✅ Integration tests passed"
             echo "✅ All index types tested (HNSW, IVF, FLAT)"
             echo "✅ All metric types tested (l2, inner_product, cosine)"
             echo "✅ Basic functionality tests passed"
             echo "✅ Metadata preservation tests passed"
+            echo "✅ Document addition and retrieval working"
             echo "✅ OceanBase 4.3.5 compatibility confirmed"
           else
             echo "❌ Some tests failed!"
