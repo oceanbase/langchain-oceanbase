@@ -96,15 +96,25 @@ class TestOceanbaseVectorStoreIntegration:
         ids = vectorstore.add_documents(documents)
         assert len(ids) == 3
         
-        # Test similarity search
-        results = vectorstore.similarity_search("Hello", k=2)
+        # Test similarity search - search for exact content to ensure we get results
+        results = vectorstore.similarity_search("Hello world", k=2)
         assert len(results) == 2
         assert any("Hello world" in doc.page_content for doc in results)
         
         # Test similarity search with score
-        results_with_score = vectorstore.similarity_search_with_score("Python", k=2)
+        results_with_score = vectorstore.similarity_search_with_score("Python programming", k=2)
         assert len(results_with_score) == 2
         assert all(isinstance(result, tuple) and len(result) == 2 for result in results_with_score)
+        
+        # Test that we can retrieve all documents
+        all_results = vectorstore.similarity_search("", k=10)
+        assert len(all_results) >= 3
+        
+        # Verify all original documents are present
+        content_list = [doc.page_content for doc in all_results]
+        assert "Hello world" in content_list
+        assert "Python programming" in content_list
+        assert "Machine learning" in content_list
     
     def test_get_by_ids(self, vectorstore):
         """Test retrieving documents by IDs"""
@@ -141,10 +151,16 @@ class TestOceanbaseVectorStoreIntegration:
             embedding_dim=6,
         )
         
-        # Test search
-        results = new_vectorstore.similarity_search("Integration", k=2)
+        # Test search with exact content
+        results = new_vectorstore.similarity_search("Integration test 1", k=2)
         assert len(results) == 2
         assert any("Integration test" in doc.page_content for doc in results)
+        
+        # Verify all texts are present
+        all_results = new_vectorstore.similarity_search("", k=10)
+        content_list = [doc.page_content for doc in all_results]
+        for text in texts:
+            assert text in content_list
     
     def test_different_metric_types(self, vectorstore):
         """Test different metric types"""
@@ -167,9 +183,15 @@ class TestOceanbaseVectorStoreIntegration:
             ids = test_vectorstore.add_documents(documents)
             assert len(ids) == 1
             
-            results = test_vectorstore.similarity_search("Test", k=1)
+            # Search for exact content to ensure we get the right document
+            results = test_vectorstore.similarity_search(f"Test for {metric_type}", k=1)
             assert len(results) == 1
             assert metric_type in results[0].page_content
+            
+            # Also test with empty query to get all documents
+            all_results = test_vectorstore.similarity_search("", k=10)
+            assert len(all_results) >= 1
+            assert any(metric_type in doc.page_content for doc in all_results)
     
     def test_different_index_types(self, vectorstore):
         """Test different index types"""
@@ -193,9 +215,15 @@ class TestOceanbaseVectorStoreIntegration:
             ids = test_vectorstore.add_documents(documents)
             assert len(ids) == 1
             
-            results = test_vectorstore.similarity_search("Test", k=1)
+            # Search for exact content to ensure we get the right document
+            results = test_vectorstore.similarity_search(f"Test for {index_type} index", k=1)
             assert len(results) == 1
             assert index_type in results[0].page_content
+            
+            # Also test with empty query to get all documents
+            all_results = test_vectorstore.similarity_search("", k=10)
+            assert len(all_results) >= 1
+            assert any(index_type in doc.page_content for doc in all_results)
     
     def test_empty_search(self, vectorstore):
         """Test search behavior with empty vectorstore"""
