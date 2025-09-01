@@ -1,0 +1,390 @@
+name: End-to-End Test with OceanBase
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  e2e-test-with-oceanbase-4_3_5:
+    name: E2E Test with OceanBase 4.3.5
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          
+      - name: Install dependencies
+        run: |
+          poetry install --with test,test_integration
+          
+      - name: Install additional test dependencies
+        run: |
+          poetry run pip install langchain-community
+          
+      - name: Start OceanBase 4.3.5 container
+        run: |
+          set -e
+          export tag="4.3.5"
+          echo "Starting OceanBase container with tag ${tag}"
+          docker run -id --name "langchain_oceanbase_test" \
+            -e MODE=mini \
+            -e OB_SERVER_IP=127.0.0.1 \
+            -p 2881:2881 \
+            oceanbase/oceanbase-ce:4.3.5-lts
+          echo "OceanBase container started"
+          
+      - name: Wait for OceanBase to be ready
+        run: |
+          set -e
+          echo "Waiting for OceanBase to be ready..."
+          timeout=600  # 10 minutes timeout
+          start_time=$(date +%s)
+          
+          while [ $timeout -gt 0 ]; do
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+            echo "Elapsed time: ${elapsed}s, remaining timeout: ${timeout}s"
+            
+            # Check if the container is still running
+            if ! docker ps | grep -q "langchain_oceanbase_test"; then
+              echo "Container is not running!"
+              docker logs langchain_oceanbase_test
+              exit 1
+            fi
+            
+            # Check for boot success message
+            if docker logs langchain_oceanbase_test 2>&1 | grep -q "boot success!"; then
+              echo "OceanBase is ready!"
+              break
+            fi
+            
+            sleep 10
+            timeout=$((timeout - 10))
+          done
+          
+          if [ $timeout -le 0 ]; then
+            echo "OceanBase did not start in time!"
+            echo "Container logs:"
+            docker logs langchain_oceanbase_test
+            exit 1
+          fi
+          
+      - name: Configure OceanBase for vector operations
+        run: |
+          set -e
+          echo "Configuring OceanBase for vector operations..."
+          
+          # Wait a bit more for the database to be fully ready
+          sleep 30
+          
+          # Set vector memory limit
+          docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
+            -e "ALTER SYSTEM ob_vector_memory_limit_percentage = 30;" || echo "Vector memory config may have failed, continuing..."
+          
+          # Create test database if needed
+          docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
+            -e "CREATE DATABASE IF NOT EXISTS test;" || echo "Database creation may have failed, continuing..."
+            
+          echo "OceanBase configuration completed"
+          
+      - name: Run compatibility tests
+        run: |
+          set -e
+          echo "Running compatibility tests..."
+          poetry run python test_compatibility.py
+          
+      - name: Run basic functionality tests
+        run: |
+          set -e
+          echo "Running basic functionality tests..."
+          
+          # Create a test script for the CI environment
+          cat > test_ci.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          CI-specific test script for langchain-oceanbase
+          """
+          
+          import os
+          import sys
+          import time
+          
+          def test_basic_functionality():
+              """Test basic functionality in CI environment"""
+              print("=" * 60)
+              print("Testing langchain-oceanbase in CI")
+              print("=" * 60)
+              
+              try:
+                  from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+                  from langchain_community.embeddings import FakeEmbeddings
+                  from langchain_core.documents import Document
+                  
+                  # Create fake embeddings
+                  embeddings = FakeEmbeddings(size=6)
+                  
+                  # CI OceanBase configuration
+                  connection_args = {
+                      "host": "127.0.0.1",
+                      "port": "2881",
+                      "user": "root",
+                      "password": "",
+                      "db_name": "test",
+                  }
+                  
+                  # Test different index types
+                  index_types = ["HNSW", "IVF", "FLAT"]
+                  
+                  for index_type in index_types:
+                      print(f"\nTesting {index_type} index type...")
+                      
+                      try:
+                          # Create vectorstore
+                          vectorstore = OceanbaseVectorStore(
+                              embedding_function=embeddings,
+                              table_name=f"ci_test_{index_type.lower()}",
+                              connection_args=connection_args,
+                              vidx_metric_type="l2",
+                              drop_old=True,
+                              embedding_dim=6,
+                              index_type=index_type,
+                          )
+                          
+                          # Test documents
+                          documents = [
+                              Document(page_content="Hello world from CI", metadata={"source": "ci_test1"}),
+                              Document(page_content="Python programming in CI", metadata={"source": "ci_test2"}),
+                              Document(page_content="Machine learning test", metadata={"source": "ci_test3"}),
+                          ]
+                          
+                          # Add documents
+                          ids = vectorstore.add_documents(documents)
+                          print(f"  ✓ Added {len(ids)} documents")
+                          
+                          # Test similarity search
+                          results = vectorstore.similarity_search("Hello", k=2)
+                          print(f"  ✓ Similarity search returned {len(results)} results")
+                          
+                          # Test similarity search with score
+                          results_with_score = vectorstore.similarity_search_with_score("Python", k=2)
+                          print(f"  ✓ Similarity search with score returned {len(results_with_score)} results")
+                          
+                          # Test get by ids
+                          if ids:
+                              retrieved_docs = vectorstore.get_by_ids(ids[:2])
+                              print(f"  ✓ Retrieved {len(retrieved_docs)} documents by IDs")
+                          
+                          print(f"  ✓ {index_type} test passed")
+                          
+                      except Exception as e:
+                          print(f"  ✗ Error testing {index_type}: {e}")
+                          import traceback
+                          traceback.print_exc()
+                          return False
+                  
+                  print("\n" + "=" * 60)
+                  print("🎉 All CI tests passed!")
+                  print("=" * 60)
+                  return True
+                  
+              except Exception as e:
+                  print(f"✗ CI test error: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  return False
+          
+          def test_metric_types():
+              """Test different metric types"""
+              print("\nTesting metric types...")
+              
+              try:
+                  from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+                  from langchain_community.embeddings import FakeEmbeddings
+                  from langchain_core.documents import Document
+                  
+                  embeddings = FakeEmbeddings(size=6)
+                  
+                  connection_args = {
+                      "host": "127.0.0.1",
+                      "port": "2881",
+                      "user": "root",
+                      "password": "",
+                      "db_name": "test",
+                  }
+                  
+                  metric_types = ["l2", "inner_product", "cosine"]
+                  
+                  for metric_type in metric_types:
+                      print(f"  Testing {metric_type} metric...")
+                      
+                      try:
+                          vectorstore = OceanbaseVectorStore(
+                              embedding_function=embeddings,
+                              table_name=f"ci_metric_{metric_type}",
+                              connection_args=connection_args,
+                              vidx_metric_type=metric_type,
+                              drop_old=True,
+                              embedding_dim=6,
+                          )
+                          
+                          documents = [
+                              Document(page_content=f"Test document for {metric_type}", metadata={"metric": metric_type}),
+                          ]
+                          
+                          ids = vectorstore.add_documents(documents)
+                          results = vectorstore.similarity_search("Test", k=1)
+                          print(f"    ✓ {metric_type} metric test passed")
+                          
+                      except Exception as e:
+                          print(f"    ✗ Error with {metric_type}: {e}")
+                          return False
+                  
+                  return True
+                  
+              except Exception as e:
+                  print(f"✗ Metric types test error: {e}")
+                  return False
+          
+          if __name__ == "__main__":
+              success = True
+              
+              if not test_basic_functionality():
+                  success = False
+                  
+              if not test_metric_types():
+                  success = False
+                  
+              if success:
+                  print("\n🎉 All CI tests completed successfully!")
+                  sys.exit(0)
+              else:
+                  print("\n❌ Some CI tests failed!")
+                  sys.exit(1)
+          EOF
+          
+          poetry run python test_ci.py
+          
+      - name: Run integration tests
+        run: |
+          set -e
+          echo "Running integration tests..."
+          
+          # Test from_texts method
+          cat > test_integration.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Integration test for from_texts method
+          """
+          
+          def test_from_texts():
+              """Test from_texts class method in CI"""
+              print("Testing from_texts method...")
+              
+              try:
+                  from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+                  from langchain_community.embeddings import FakeEmbeddings
+                  
+                  embeddings = FakeEmbeddings(size=6)
+                  
+                  connection_args = {
+                      "host": "127.0.0.1",
+                      "port": "2881",
+                      "user": "root",
+                      "password": "",
+                      "db_name": "test",
+                  }
+                  
+                  texts = ["First CI text", "Second CI text", "Third CI text"]
+                  metadatas = [{"source": "ci1"}, {"source": "ci2"}, {"source": "ci3"}]
+                  
+                  vectorstore = OceanbaseVectorStore.from_texts(
+                      texts=texts,
+                      embedding=embeddings,
+                      metadatas=metadatas,
+                      table_name="ci_from_texts",
+                      connection_args=connection_args,
+                      vidx_metric_type="l2",
+                      drop_old=True,
+                      embedding_dim=6,
+                  )
+                  
+                  print("✓ from_texts method successful")
+                  
+                  # Test search
+                  results = vectorstore.similarity_search("First", k=1)
+                  print("✓ Search after from_texts successful")
+                  
+                  return True
+                  
+              except Exception as e:
+                  print(f"✗ from_texts error: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  return False
+          
+          if __name__ == "__main__":
+              if test_from_texts():
+                  print("🎉 Integration test passed!")
+              else:
+                  print("❌ Integration test failed!")
+                  exit(1)
+          EOF
+          
+          poetry run python test_integration.py
+          
+      - name: Cleanup and show results
+        if: always()
+        run: |
+          echo "Test completed. Cleaning up..."
+          
+          # Show container logs if needed
+          if docker ps -a | grep -q "langchain_oceanbase_test"; then
+            echo "=== OceanBase Container Status ==="
+            docker ps -a | grep langchain_oceanbase_test || true
+            
+            echo "=== OceanBase Container Logs (last 50 lines) ==="
+            docker logs --tail 50 langchain_oceanbase_test || true
+          fi
+          
+          # Clean up container
+          docker rm -f langchain_oceanbase_test || true
+          
+          echo "Cleanup completed"
+          
+  e2e-test-summary:
+    name: E2E Test Summary
+    runs-on: ubuntu-latest
+    needs: e2e-test-with-oceanbase-4_3_5
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.e2e-test-with-oceanbase-4_3_5.result }}" == "success" ]; then
+            echo "🎉 End-to-end tests passed successfully!"
+            echo "✅ All index types tested"
+            echo "✅ All metric types tested"
+            echo "✅ Integration tests passed"
+            echo "✅ OceanBase 4.3.5 compatibility confirmed"
+          else
+            echo "❌ End-to-end tests failed!"
+            echo "Please check the logs above for details."
+            exit 1
+          fi 
