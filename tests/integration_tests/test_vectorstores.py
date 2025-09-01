@@ -119,9 +119,9 @@ class TestOceanbaseVectorStoreIntegration:
     def test_get_by_ids(self, vectorstore):
         """Test retrieving documents by IDs"""
         documents = [
-            Document(page_content="Document 1", metadata={"id": "1"}),
-            Document(page_content="Document 2", metadata={"id": "2"}),
-            Document(page_content="Document 3", metadata={"id": "3"}),
+            Document(page_content="Get by IDs test document 1", metadata={"id": "1"}),
+            Document(page_content="Get by IDs test document 2", metadata={"id": "2"}),
+            Document(page_content="Get by IDs test document 3", metadata={"id": "3"}),
         ]
         
         ids = vectorstore.add_documents(documents)
@@ -130,10 +130,18 @@ class TestOceanbaseVectorStoreIntegration:
         retrieved_docs = vectorstore.get_by_ids(ids[:2])
         assert len(retrieved_docs) == 2
         
-        # Check content
+        # Check content - find by content instead of assuming order
         content_list = [doc.page_content for doc in retrieved_docs]
-        assert "Document 1" in content_list
-        assert "Document 2" in content_list
+        assert "Get by IDs test document 1" in content_list
+        assert "Get by IDs test document 2" in content_list
+        
+        # Also test retrieving all documents
+        all_retrieved_docs = vectorstore.get_by_ids(ids)
+        assert len(all_retrieved_docs) == 3
+        all_content_list = [doc.page_content for doc in all_retrieved_docs]
+        assert "Get by IDs test document 1" in all_content_list
+        assert "Get by IDs test document 2" in all_content_list
+        assert "Get by IDs test document 3" in all_content_list
     
     def test_from_texts_integration(self, vectorstore):
         """Test from_texts method integration"""
@@ -237,8 +245,8 @@ class TestOceanbaseVectorStoreIntegration:
     def test_metadata_preservation(self, vectorstore):
         """Test that metadata is preserved correctly"""
         documents = [
-            Document(page_content="Content 1", metadata={"key1": "value1", "key2": "value2"}),
-            Document(page_content="Content 2", metadata={"key3": "value3"}),
+            Document(page_content="Integration metadata content 1", metadata={"key1": "value1", "key2": "value2"}),
+            Document(page_content="Integration metadata content 2", metadata={"key3": "value3"}),
         ]
         
         ids = vectorstore.add_documents(documents)
@@ -247,11 +255,21 @@ class TestOceanbaseVectorStoreIntegration:
         retrieved_docs = vectorstore.get_by_ids(ids)
         assert len(retrieved_docs) == 2
         
+        # Find documents by content instead of assuming order
+        doc1 = None
+        doc2 = None
+        
+        for doc in retrieved_docs:
+            if doc.page_content == "Integration metadata content 1":
+                doc1 = doc
+            elif doc.page_content == "Integration metadata content 2":
+                doc2 = doc
+        
         # Check first document metadata
-        doc1 = retrieved_docs[0]
+        assert doc1 is not None, "Document 1 not found"
         assert doc1.metadata["key1"] == "value1"
         assert doc1.metadata["key2"] == "value2"
         
         # Check second document metadata
-        doc2 = retrieved_docs[1]
+        assert doc2 is not None, "Document 2 not found"
         assert doc2.metadata["key3"] == "value3"
