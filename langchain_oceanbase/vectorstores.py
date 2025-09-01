@@ -34,7 +34,7 @@ DEFAULT_OCEANBASE_HNSW_BUILD_PARAM = {"M": 16, "efConstruction": 200}
 DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM = {"efSearch": 64}
 DEFAULT_OCEANBASE_IVF_BUILD_PARAM = {"nlist": 1000}
 DEFAULT_OCEANBASE_IVF_SEARCH_PARAM = {"nprobe": 10}
-DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {}
+DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {"nlist": 1}  # FLAT uses IVFFLAT with nlist=1
 DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM = {}
 
 # Supported index types mapping
@@ -258,24 +258,24 @@ class OceanbaseVectorStore(VectorStore):
 
         # Set default parameters based on index type
         if vidx_algo_params is None:
-            if self.index_type in ["HNSW", "FLAT"]:
-                self.vidx_algo_params = DEFAULT_OCEANBASE_HNSW_BUILD_PARAM.copy()
-            elif self.index_type == "HNSW_SQ":
-                self.vidx_algo_params = DEFAULT_OCEANBASE_HNSW_BUILD_PARAM.copy()
-            elif self.index_type in ["IVF", "IVF_FLAT"]:
-                self.vidx_algo_params = DEFAULT_OCEANBASE_IVF_BUILD_PARAM.copy()
-            elif self.index_type == "IVF_SQ":
-                self.vidx_algo_params = DEFAULT_OCEANBASE_IVF_BUILD_PARAM.copy()
-            elif self.index_type == "IVF_PQ":
-                self.vidx_algo_params = DEFAULT_OCEANBASE_IVF_BUILD_PARAM.copy()
+            # Map index types to their default build parameters
+            index_param_map = {
+                "HNSW": DEFAULT_OCEANBASE_HNSW_BUILD_PARAM,
+                "HNSW_SQ": DEFAULT_OCEANBASE_HNSW_BUILD_PARAM,
+                "IVF": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_FLAT": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_SQ": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_PQ": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "FLAT": DEFAULT_OCEANBASE_FLAT_BUILD_PARAM,
+            }
+            
+            self.vidx_algo_params = index_param_map[self.index_type].copy()
+            
+            # Special handling for IVF_PQ: add 'm' parameter if not present
+            if self.index_type == "IVF_PQ" and 'm' not in self.vidx_algo_params:
                 # IVF_PQ requires 'm' parameter that must divide the embedding dimension
-                if 'm' not in self.vidx_algo_params:
-                    # For dim=6, we can use m=2, 3, or 6 (divisors of 6)
-                    self.vidx_algo_params['m'] = 3  # Use 3 as it's a reasonable divisor of 6
-            elif self.index_type == "FLAT":
-                self.vidx_algo_params = DEFAULT_OCEANBASE_FLAT_BUILD_PARAM.copy()
-                # For FLAT, we use IVFFLAT with nlist=1
-                self.vidx_algo_params["nlist"] = 1
+                # Default to 3 as a reasonable divisor for most embedding dimensions
+                self.vidx_algo_params['m'] = 3
         else:
             self.vidx_algo_params = vidx_algo_params.copy()
             # Add index_type to params for internal use
@@ -386,6 +386,19 @@ class OceanbaseVectorStore(VectorStore):
         norm = np.linalg.norm(arr)
         arr = arr / norm
         return arr.tolist()
+
+    def _get_default_search_params(self) -> dict:
+        """Get default search parameters based on index type."""
+        search_param_map = {
+            "HNSW": DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM,
+            "HNSW_SQ": DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM,
+            "IVF": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_FLAT": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_SQ": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_PQ": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "FLAT": DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM,
+        }
+        return search_param_map.get(self.index_type, DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM)
 
     def add_texts(
         self,
@@ -538,8 +551,7 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -567,8 +579,7 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text being searched.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -596,8 +607,7 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -606,15 +616,14 @@ class OceanbaseVectorStore(VectorStore):
         if k < 0:
             return []
 
-        search_param = (
-            param if param is not None else DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
-        )
-        ef_search = search_param.get(
-            "efSearch", DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM["efSearch"]
-        )
-        if ef_search != self.hnsw_ef_search:
-            self.obvector.set_ob_hnsw_ef_search(ef_search)
-            self.hnsw_ef_search = ef_search
+        search_param = param if param is not None else self._get_default_search_params()
+        
+        # Handle HNSW-specific efSearch parameter
+        if self.index_type in ["HNSW", "HNSW_SQ"]:
+            ef_search = search_param.get("efSearch", self._get_default_search_params()["efSearch"])
+            if ef_search != self.hnsw_ef_search:
+                self.obvector.set_ob_hnsw_ef_search(ef_search)
+                self.hnsw_ef_search = ef_search
 
         res = self.obvector.ann_search(
             table_name=self.table_name,
@@ -653,8 +662,7 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector being searched.
             k (int, optional): The amount of results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -663,15 +671,14 @@ class OceanbaseVectorStore(VectorStore):
         if k < 0:
             return []
 
-        search_param = (
-            param if param is not None else DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
-        )
-        ef_search = search_param.get(
-            "efSearch", DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM["efSearch"]
-        )
-        if ef_search != self.hnsw_ef_search:
-            self.obvector.set_ob_hnsw_ef_search(ef_search)
-            self.hnsw_ef_search = ef_search
+        search_param = param if param is not None else self._get_default_search_params()
+        
+        # Handle HNSW-specific efSearch parameter
+        if self.index_type in ["HNSW", "HNSW_SQ"]:
+            ef_search = search_param.get("efSearch", self._get_default_search_params()["efSearch"])
+            if ef_search != self.hnsw_ef_search:
+                self.obvector.set_ob_hnsw_ef_search(ef_search)
+                self.hnsw_ef_search = ef_search
 
         res = self.obvector.ann_search(
             table_name=self.table_name,
