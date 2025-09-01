@@ -30,11 +30,15 @@ DEFAULT_OCEANBASE_CONNECTION = {
 DEFAULT_OCEANBASE_VECTOR_TABLE_NAME = "langchain_vector"
 
 # Default parameters for different index types
+# from: https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000002012936
 DEFAULT_OCEANBASE_HNSW_BUILD_PARAM = {"M": 16, "efConstruction": 200}
 DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM = {"efSearch": 64}
-DEFAULT_OCEANBASE_IVF_BUILD_PARAM = {"nlist": 1000}
-DEFAULT_OCEANBASE_IVF_SEARCH_PARAM = {"nprobe": 10}
-DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {"nlist": 1}  # FLAT uses IVFFLAT with nlist=1
+
+# from: https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000002012936
+DEFAULT_OCEANBASE_IVF_BUILD_PARAM = {"nlist": 128}
+
+DEFAULT_OCEANBASE_IVF_SEARCH_PARAM = {}
+DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {}
 DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM = {}
 
 # Supported index types mapping
