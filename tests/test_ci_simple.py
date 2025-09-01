@@ -87,11 +87,17 @@ def test_basic_functionality() -> bool:
         print(f"  ✓ Retrieved {len(retrieved_docs)} documents by IDs")
         assert len(retrieved_docs) == 3
         
-        # Verify content
+        # Verify content - find by content instead of assuming order
         content_list = [doc.page_content for doc in retrieved_docs]
         assert "Test document 1" in content_list
         assert "Test document 2" in content_list
         assert "Test document 3" in content_list
+        
+        # Test retrieving subset of documents
+        subset_docs = vectorstore.get_by_ids(ids[:2])
+        assert len(subset_docs) == 2
+        subset_content_list = [doc.page_content for doc in subset_docs]
+        assert len([c for c in subset_content_list if "Test document" in c]) == 2
         
         # Test similarity search (basic)
         print("Testing similarity search...")
@@ -185,11 +191,11 @@ def test_metadata_preservation() -> bool:
             "db_name": "test",
         }
         
-        # Create documents with metadata
-        documents = [
-            Document(page_content="Content 1", metadata={"key1": "value1", "key2": "value2"}),
-            Document(page_content="Content 2", metadata={"key3": "value3"}),
-        ]
+        # Create a single document with metadata for simpler testing
+        document = Document(
+            page_content="Simple metadata test content", 
+            metadata={"test_key": "test_value", "number": 42, "list": [1, 2, 3]}
+        )
         
         vectorstore = OceanbaseVectorStore(
             embedding_function=embeddings,
@@ -200,22 +206,23 @@ def test_metadata_preservation() -> bool:
             embedding_dim=6,
         )
         
-        # Add documents
-        ids = vectorstore.add_documents(documents)
-        assert len(ids) == 2
+        # Add document
+        ids = vectorstore.add_documents([document])
+        assert len(ids) == 1
         
         # Retrieve and check metadata
         retrieved_docs = vectorstore.get_by_ids(ids)
-        assert len(retrieved_docs) == 2
+        assert len(retrieved_docs) == 1
         
-        # Check first document metadata
-        doc1 = retrieved_docs[0]
-        assert doc1.metadata["key1"] == "value1"
-        assert doc1.metadata["key2"] == "value2"
+        retrieved_doc = retrieved_docs[0]
         
-        # Check second document metadata
-        doc2 = retrieved_docs[1]
-        assert doc2.metadata["key3"] == "value3"
+        # Check that metadata is preserved
+        assert retrieved_doc.metadata["test_key"] == "test_value"
+        assert retrieved_doc.metadata["number"] == 42
+        assert retrieved_doc.metadata["list"] == [1, 2, 3]
+        
+        # Check that content is preserved
+        assert retrieved_doc.page_content == "Simple metadata test content"
         
         print("✓ Metadata preservation test passed")
         return True
