@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from pyobvector import VECTOR, ObVecClient  # type: ignore
+from pyobvector.client.index_param import VecIndexType  # type: ignore
 from sqlalchemy import JSON, Column, String, Table, func, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 
@@ -27,9 +28,30 @@ DEFAULT_OCEANBASE_CONNECTION = {
     "db_name": "test",
 }
 DEFAULT_OCEANBASE_VECTOR_TABLE_NAME = "langchain_vector"
-DEFAULT_OCEANBASE_HNSW_BUILD_PARAM = {"M": 16, "efConstruction": 256}
+
+# Default parameters for different index types
+# from: https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000002012936
+DEFAULT_OCEANBASE_HNSW_BUILD_PARAM = {"M": 16, "efConstruction": 200}
 DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM = {"efSearch": 64}
-OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPE = "HNSW"
+
+# from: https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000002012936
+DEFAULT_OCEANBASE_IVF_BUILD_PARAM = {"nlist": 128}
+
+DEFAULT_OCEANBASE_IVF_SEARCH_PARAM = {}
+DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {}
+DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM = {}
+
+# Supported index types mapping
+OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
+    "HNSW": VecIndexType.HNSW,
+    "HNSW_SQ": VecIndexType.HNSW_SQ,
+    "IVF": VecIndexType.IVFFLAT,  # Use IVFFLAT as default IVF implementation
+    "IVF_FLAT": VecIndexType.IVFFLAT,
+    "IVF_SQ": VecIndexType.IVFSQ,
+    "IVF_PQ": VecIndexType.IVFPQ,
+    "FLAT": VecIndexType.IVFFLAT,  # FLAT can be implemented as IVFFLAT with nlist=1
+}
+
 DEFAULT_OCEANBASE_VECTOR_METRIC_TYPE = "l2"
 
 DEFAULT_METADATA_FIELD = "metadata"
@@ -60,10 +82,20 @@ class OceanbaseVectorStore(VectorStore):
     Key init args — indexing params:
         vidx_metric_type: str
             Metric method of distance between vectors.
-            This parameter takes values in `l2` and `inner_product`. Defaults to `l2`.
+            This parameter takes values in `l2`, `inner_product`, and `cosine`. Defaults to `l2`.
         vidx_algo_params: Optional[dict]
-            Which index params to use. Now OceanBase supports HNSW only.
-            Refer to `DEFAULT_OCEANBASE_HNSW_BUILD_PARAM` for example.
+            Which index params to use. OceanBase supports multiple index types:
+            - HNSW: Hierarchical Navigable Small World graph index, suitable for high-dimensional vectors
+            - HNSW_SQ: Scalar quantized version of HNSW
+            - IVF: Inverted File index, suitable for large-scale data
+            - IVF_FLAT: Exact search version of IVF
+            - IVF_SQ: Scalar quantized version of IVF
+            - IVF_PQ: Product quantized version of IVF
+            - FLAT: Brute force search index, suitable for small datasets
+            Refer to `DEFAULT_OCEANBASE_HNSW_BUILD_PARAM` and other default parameters for examples.
+        index_type: str
+            Type of vector index to use. Supports "HNSW", "HNSW_SQ", "IVF", "IVF_FLAT", "IVF_SQ", "IVF_PQ", "FLAT".
+            Defaults to "HNSW".
         drop_old: bool
             Whether to drop the current table. Defaults to False.
         primary_field: str
@@ -82,6 +114,10 @@ class OceanbaseVectorStore(VectorStore):
             Refer to `pyobvector`'s documentation for more examples.
         extra_columns: Optional[List[Column]]
             Extra sqlalchemy columns to add to the table.
+        normalize: bool
+            Whether to perform L2 normalization on vectors. Defaults to False.
+        embedding_dim: Optional[int]
+            Dimension of vectors. If not specified, will be inferred from the first embedding vector.
 
     Key init args — client params:
         embedding_function: Embeddings
@@ -115,6 +151,7 @@ class OceanbaseVectorStore(VectorStore):
                 table_name="langchain_vector",
                 connection_args=connection_args,
                 vidx_metric_type="l2",
+                index_type="HNSW",
                 drop_old=True,
             )
 
@@ -165,6 +202,14 @@ class OceanbaseVectorStore(VectorStore):
             )
             retriever.invoke("thud")
 
+    Features:
+        - Support for multiple vector index types: HNSW, IVF, FLAT, etc.
+        - Support for multiple distance metrics: L2, inner product, cosine distance
+        - Support for metadata filtering and querying
+        - Support for batch operations and partitioning
+        - Automatic table creation and index management
+        - Full compatibility with LangChain ecosystem
+
     """  # noqa: E501
 
     def __init__(  # type: ignore[no-untyped-def]
@@ -185,6 +230,7 @@ class OceanbaseVectorStore(VectorStore):
         extra_columns: Optional[List[Column]] = None,
         normalize: bool = False,
         embedding_dim: Optional[int] = None,
+        index_type: str = "HNSW",
         **kwargs,
     ):
         """Initialize the OceanBase vector store."""
@@ -202,16 +248,42 @@ class OceanbaseVectorStore(VectorStore):
         assert self.obvector is not None
 
         self.vidx_metric_type = vidx_metric_type.lower()
-        if self.vidx_metric_type not in ("l2", "inner_product"):
+        if self.vidx_metric_type not in ("l2", "inner_product", "cosine"):
             raise ValueError(
-                "`vidx_metric_type` should be set in `l2`/`inner_product`."
+                "`vidx_metric_type` should be set in `l2`/`inner_product`/`cosine`."
             )
 
-        self.vidx_algo_params = (
-            vidx_algo_params
-            if vidx_algo_params is not None
-            else DEFAULT_OCEANBASE_HNSW_BUILD_PARAM
-        )
+        # Set index type and default parameters
+        self.index_type = index_type.upper()
+        if self.index_type not in OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES:
+            raise ValueError(
+                f"`index_type` should be one of {list(OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES.keys())}. Got {self.index_type}"
+            )
+
+        # Set default parameters based on index type
+        if vidx_algo_params is None:
+            # Map index types to their default build parameters
+            index_param_map = {
+                "HNSW": DEFAULT_OCEANBASE_HNSW_BUILD_PARAM,
+                "HNSW_SQ": DEFAULT_OCEANBASE_HNSW_BUILD_PARAM,
+                "IVF": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_FLAT": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_SQ": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "IVF_PQ": DEFAULT_OCEANBASE_IVF_BUILD_PARAM,
+                "FLAT": DEFAULT_OCEANBASE_FLAT_BUILD_PARAM,
+            }
+
+            self.vidx_algo_params = index_param_map[self.index_type].copy()
+
+            # Special handling for IVF_PQ: add 'm' parameter if not present
+            if self.index_type == "IVF_PQ" and "m" not in self.vidx_algo_params:
+                # IVF_PQ requires 'm' parameter that must divide the embedding dimension
+                # Default to 3 as a reasonable divisor for most embedding dimensions
+                self.vidx_algo_params["m"] = 3
+        else:
+            self.vidx_algo_params = vidx_algo_params.copy()
+            # Add index_type to params for internal use
+            self.vidx_algo_params["index_type"] = self.index_type
 
         self.drop_old = drop_old
         self.primary_field = primary_field
@@ -244,7 +316,7 @@ class OceanbaseVectorStore(VectorStore):
         db_name = self.connection_args.get("db_name", "test")
 
         self.obvector = ObVecClient(
-            uri=host + ":" + port,
+            uri=f"{host}:{port}",
             user=user,
             password=password,
             db_name=db_name,
@@ -282,7 +354,7 @@ class OceanbaseVectorStore(VectorStore):
         vidx_params = self.obvector.prepare_index_params()
         vidx_params.add_index(
             field_name=self.vector_field,
-            index_type=OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPE,
+            index_type=OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES[self.index_type],
             index_name=self.vidx_name,
             metric_type=self.vidx_metric_type,
             params=self.vidx_algo_params,
@@ -318,6 +390,21 @@ class OceanbaseVectorStore(VectorStore):
         norm = np.linalg.norm(arr)
         arr = arr / norm
         return arr.tolist()
+
+    def _get_default_search_params(self) -> dict:
+        """Get default search parameters based on index type."""
+        search_param_map = {
+            "HNSW": DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM,
+            "HNSW_SQ": DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM,
+            "IVF": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_FLAT": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_SQ": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "IVF_PQ": DEFAULT_OCEANBASE_IVF_SEARCH_PARAM,
+            "FLAT": DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM,
+        }
+        return search_param_map.get(
+            self.index_type, DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
+        )
 
     def add_texts(
         self,
@@ -470,8 +557,7 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -499,8 +585,7 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text being searched.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -528,8 +613,7 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -538,15 +622,16 @@ class OceanbaseVectorStore(VectorStore):
         if k < 0:
             return []
 
-        search_param = (
-            param if param is not None else DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
-        )
-        ef_search = search_param.get(
-            "efSearch", DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM["efSearch"]
-        )
-        if ef_search != self.hnsw_ef_search:
-            self.obvector.set_ob_hnsw_ef_search(ef_search)
-            self.hnsw_ef_search = ef_search
+        search_param = param if param is not None else self._get_default_search_params()
+
+        # Handle HNSW-specific efSearch parameter
+        if self.index_type in ["HNSW", "HNSW_SQ"]:
+            ef_search = search_param.get(
+                "efSearch", self._get_default_search_params()["efSearch"]
+            )
+            if ef_search != self.hnsw_ef_search:
+                self.obvector.set_ob_hnsw_ef_search(ef_search)
+                self.hnsw_ef_search = ef_search
 
         res = self.obvector.ann_search(
             table_name=self.table_name,
@@ -585,8 +670,7 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector being searched.
             k (int, optional): The amount of results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to `DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM`
-                for example.
+                Defaults to None. Refer to default search parameters for each index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -595,15 +679,16 @@ class OceanbaseVectorStore(VectorStore):
         if k < 0:
             return []
 
-        search_param = (
-            param if param is not None else DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM
-        )
-        ef_search = search_param.get(
-            "efSearch", DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM["efSearch"]
-        )
-        if ef_search != self.hnsw_ef_search:
-            self.obvector.set_ob_hnsw_ef_search(ef_search)
-            self.hnsw_ef_search = ef_search
+        search_param = param if param is not None else self._get_default_search_params()
+
+        # Handle HNSW-specific efSearch parameter
+        if self.index_type in ["HNSW", "HNSW_SQ"]:
+            ef_search = search_param.get(
+                "efSearch", self._get_default_search_params()["efSearch"]
+            )
+            if ef_search != self.hnsw_ef_search:
+                self.obvector.set_ob_hnsw_ef_search(ef_search)
+                self.hnsw_ef_search = ef_search
 
         res = self.obvector.ann_search(
             table_name=self.table_name,
@@ -668,9 +753,10 @@ class OceanbaseVectorStore(VectorStore):
         extra_columns: Optional[List[Column]] = None,
         normalize: bool = False,
         extras: Optional[List[dict]] = None,
+        index_type: str = "HNSW",
         **kwargs: Any,
     ) -> "OceanbaseVectorStore":
-        """Create a OceanBase table, indexes it with HNSW, and insert data.
+        """Create a OceanBase table, indexes it with specified index type, and insert data.
 
         Args:
             texts (List[str]): Text data.
@@ -681,16 +767,17 @@ class OceanbaseVectorStore(VectorStore):
             connection_args (Optional[dict[str, Any]]): Refer to
                 `DEFAULT_OCEANBASE_CONNECTION` for example.
             vidx_metric_type (str): Metric method of distance between vectors.
-                This parameter takes values in `l2` and `inner_product`.
+                This parameter takes values in `l2`, `inner_product`, and `cosine`.
                 Defaults to `l2`.
-            vidx_algo_params (Optional[dict]): Which index params to use. Now OceanBase
-                supports HNSW only. Refer to `DEFAULT_OCEANBASE_HNSW_BUILD_PARAM`
-                for example.
+            vidx_algo_params (Optional[dict]): Which index params to use. Supports
+                HNSW, IVF, and FLAT index types. Refer to default parameters for examples.
             drop_old (bool): Whether to drop the current table. Defaults
                 to False.
             ids (Optional[List[str]]): List of text ids. Defaults to None.
             extra_columns (Optional[List[Column]]): Extra columns to add to the table.
             extras (Optional[List[dict]]): Extra data to insert. Defaults to None.
+            index_type (str): Type of vector index to use. Supports "HNSW", "HNSW_SQ", "IVF", "IVF_FLAT", "IVF_SQ", "IVF_PQ", "FLAT".
+                Defaults to "HNSW".
 
         Returns:
             OceanBase: OceanBase Vector Store
@@ -704,6 +791,7 @@ class OceanbaseVectorStore(VectorStore):
             drop_old=drop_old,
             extra_columns=extra_columns,
             normalize=normalize,
+            index_type=index_type,
             **kwargs,
         )
         oceanbase.add_texts(texts, metadatas, ids=ids, extras=extras)
@@ -717,6 +805,8 @@ class OceanbaseVectorStore(VectorStore):
             return _neg_inner_product_similarity
         elif self.vidx_metric_type == "l2":
             return _euclidean_similarity
+        elif self.vidx_metric_type == "cosine":
+            return _euclidean_similarity  # Cosine distance uses same similarity function as L2
         else:
             raise ValueError(
                 "No supported normalization function"

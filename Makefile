@@ -19,6 +19,10 @@ test_watch:
 integration_test integration_tests:
 	poetry run pytest $(TEST_FILE)
 
+# comprehensive tests run the unified test suite
+comprehensive_test comprehensive_tests:
+	poetry run python tests/test_comprehensive.py
+
 ######################
 # LINTING AND FORMATTING
 ######################
@@ -61,4 +65,6 @@ help:
 	@echo 'lint                         - run linters'
 	@echo 'test                         - run unit tests'
 	@echo 'tests                        - run unit tests'
+	@echo 'integration_test             - run integration tests'
+	@echo 'comprehensive_test           - run comprehensive tests (CI, compatibility, integration)'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
