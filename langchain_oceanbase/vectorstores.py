@@ -7,14 +7,22 @@ import logging
 import math
 import traceback
 import uuid
-from typing import Any, Callable, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
-from pyobvector import VECTOR, ObVecClient  # type: ignore
-from pyobvector.client.index_param import VecIndexType  # type: ignore
+from pyobvector import (
+    SPARSE_VECTOR,
+    VECTOR,
+    ObVecClient,
+    cosine_distance,
+    inner_product,
+    l2_distance,
+)
+from pyobvector.client.fts_index_param import FtsIndexParam, FtsParser
+from pyobvector.client.index_param import VecIndexType
 from sqlalchemy import JSON, Column, String, Table, func, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 
@@ -231,6 +239,8 @@ class OceanbaseVectorStore(VectorStore):
         normalize: bool = False,
         embedding_dim: Optional[int] = None,
         index_type: str = "HNSW",
+        include_sparse: bool = False,
+        include_fulltext: bool = False,
         **kwargs,
     ):
         """Initialize the OceanBase vector store."""
@@ -257,7 +267,9 @@ class OceanbaseVectorStore(VectorStore):
         self.index_type = index_type.upper()
         if self.index_type not in OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES:
             raise ValueError(
-                f"`index_type` should be one of {list(OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES.keys())}. Got {self.index_type}"
+                f"`index_type` should be one of "
+                f"{list(OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES.keys())}. "
+                f"Got {self.index_type}"
             )
 
         # Set default parameters based on index type
@@ -293,6 +305,12 @@ class OceanbaseVectorStore(VectorStore):
         self.vidx_name = vidx_name
         self.partition = partitions
         self.hnsw_ef_search = -1
+        
+        # Hybrid search parameters
+        self.include_sparse = include_sparse
+        self.include_fulltext = include_fulltext
+        self.sparse_vector_field = "sparse_embedding"
+        self.fulltext_field = "fulltext_content"
 
         if self.drop_old:
             self.obvector.drop_table_if_exist(self.table_name)
@@ -330,8 +348,21 @@ class OceanbaseVectorStore(VectorStore):
             autoload_with=self.obvector.engine,
         )
         column_names = [column.name for column in table.columns]
-        optional_len = len(self.extra_columns or []) + 1
-        assert len(column_names) == (3 + optional_len)
+        
+        # Calculate expected column count including hybrid search fields
+        base_columns = 4  # id, vector, text, metadata
+        hybrid_columns = 0
+        if self.include_sparse:
+            hybrid_columns += 1
+        if self.include_fulltext:
+            hybrid_columns += 1
+        extra_columns = len(self.extra_columns or [])
+        
+        expected_columns = base_columns + hybrid_columns + extra_columns
+        assert len(column_names) == expected_columns, (
+            f"Expected {expected_columns} columns, got {len(column_names)}: "
+            f"{column_names}"
+        )
 
         logging.info(f"load exist table with {column_names} columns")
         self.primary_field = column_names[0]
@@ -348,6 +379,14 @@ class OceanbaseVectorStore(VectorStore):
             Column(self.text_field, LONGTEXT),
             Column(self.metadata_field, JSON),
         ]
+        
+        # Add hybrid search columns if enabled
+        if self.include_sparse:
+            cols.append(Column(self.sparse_vector_field, SPARSE_VECTOR()))
+            
+        if self.include_fulltext:
+            cols.append(Column(self.fulltext_field, LONGTEXT))
+            
         if self.extra_columns is not None:
             cols.extend(self.extra_columns)
 
@@ -359,12 +398,33 @@ class OceanbaseVectorStore(VectorStore):
             metric_type=self.vidx_metric_type,
             params=self.vidx_algo_params,
         )
+        
+        # Add sparse vector index if enabled
+        if self.include_sparse:
+            vidx_params.add_index(
+                field_name=self.sparse_vector_field,
+                index_type="daat",  # DAAT index for sparse vectors
+                index_name=f"{self.vidx_name}_sparse",
+                metric_type="inner_product",
+            )
+
+        # Prepare FTS indexes if enabled
+        fts_idxs = None
+        if self.include_fulltext:
+            fts_idxs = [
+                FtsIndexParam(
+                    index_name=f"{self.vidx_name}_fts",
+                    field_names=[self.fulltext_field],
+                    parser_type=FtsParser.NGRAM,
+                )
+            ]
 
         self.obvector.create_table_with_index_params(
             table_name=self.table_name,
             columns=cols,
             indexes=None,
             vidxs=vidx_params,
+            fts_idxs=fts_idxs,
             partitions=self.partition,
         )
 
@@ -557,7 +617,8 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to default search parameters for each index type.
+                Defaults to None. Refer to default search parameters for each
+                index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -585,7 +646,8 @@ class OceanbaseVectorStore(VectorStore):
             query (str): The text being searched.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to default search parameters for each index type.
+                Defaults to None. Refer to default search parameters for each
+                index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -613,7 +675,8 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector to search.
             k (int, optional): How many results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to default search parameters for each index type.
+                Defaults to None. Refer to default search parameters for each
+                index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -670,7 +733,8 @@ class OceanbaseVectorStore(VectorStore):
             embedding (List[float]): The embedding vector being searched.
             k (int, optional): The amount of results to return. Defaults to 10.
             param (Optional[dict]): The search params for the index type.
-                Defaults to None. Refer to default search parameters for each index type.
+                Defaults to None. Refer to default search parameters for each
+                index type.
             fltr (Optional[str]): Boolean filter. Defaults to None.
 
         Returns:
@@ -756,7 +820,8 @@ class OceanbaseVectorStore(VectorStore):
         index_type: str = "HNSW",
         **kwargs: Any,
     ) -> "OceanbaseVectorStore":
-        """Create a OceanBase table, indexes it with specified index type, and insert data.
+        """Create a OceanBase table, indexes it with specified index type, and
+        insert data.
 
         Args:
             texts (List[str]): Text data.
@@ -770,13 +835,15 @@ class OceanbaseVectorStore(VectorStore):
                 This parameter takes values in `l2`, `inner_product`, and `cosine`.
                 Defaults to `l2`.
             vidx_algo_params (Optional[dict]): Which index params to use. Supports
-                HNSW, IVF, and FLAT index types. Refer to default parameters for examples.
+                HNSW, IVF, and FLAT index types. Refer to default parameters for
+                examples.
             drop_old (bool): Whether to drop the current table. Defaults
                 to False.
             ids (Optional[List[str]]): List of text ids. Defaults to None.
             extra_columns (Optional[List[Column]]): Extra columns to add to the table.
             extras (Optional[List[dict]]): Extra data to insert. Defaults to None.
-            index_type (str): Type of vector index to use. Supports "HNSW", "HNSW_SQ", "IVF", "IVF_FLAT", "IVF_SQ", "IVF_PQ", "FLAT".
+            index_type (str): Type of vector index to use. Supports "HNSW",
+                "HNSW_SQ", "IVF", "IVF_FLAT", "IVF_SQ", "IVF_PQ", "FLAT".
                 Defaults to "HNSW".
 
         Returns:
@@ -806,9 +873,619 @@ class OceanbaseVectorStore(VectorStore):
         elif self.vidx_metric_type == "l2":
             return _euclidean_similarity
         elif self.vidx_metric_type == "cosine":
-            return _euclidean_similarity  # Cosine distance uses same similarity function as L2
+            # Cosine distance uses same similarity function as L2
+            return _euclidean_similarity
         else:
             raise ValueError(
                 "No supported normalization function"
                 f" for distance_strategy of {self.vidx_metric_type}."
             )
+
+    def _get_distance_function(self, metric_type: str):
+        """
+        Get the appropriate distance function for the given metric type.
+        """
+        if metric_type == "inner_product":
+            return inner_product
+        elif metric_type == "l2":
+            return l2_distance
+        elif metric_type == "cosine":
+            return cosine_distance
+        else:
+            raise ValueError(f"Unsupported metric type: {metric_type}")
+
+    def _convert_results_to_documents(self, results):
+        """
+        Convert search results to Document objects.
+        """
+        documents = []
+        for result in results:
+            if isinstance(result, dict):
+                page_content = result.get(self.text_field, "")
+                metadata = result.get(self.metadata_field, {})
+                
+                # Ensure metadata is a dict, not a JSON string
+                if isinstance(metadata, str):
+                    try:
+                        metadata = json.loads(metadata)
+                    except (json.JSONDecodeError, TypeError):
+                        metadata = {}
+            else:
+                page_content = str(result[1]) if len(result) > 1 else ""
+                metadata_raw = result[3] if len(result) > 3 else {}
+                
+                if isinstance(metadata_raw, str):
+                    try:
+                        metadata = json.loads(metadata_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        metadata = {}
+                else:
+                    metadata = metadata_raw or {}
+            
+            documents.append(Document(page_content=page_content, metadata=metadata))
+        
+        return documents
+
+    # Hybrid Search Methods
+    def add_sparse_documents(
+        self,
+        documents: List[Document],
+        sparse_embeddings: List[Dict[int, float]],
+        ids: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        Add documents with sparse vector embeddings.
+
+        Args:
+            documents: List of documents to add
+            sparse_embeddings: List of sparse vector embeddings (dict of index: value)
+            ids: Optional list of document IDs
+
+        Returns:
+            List of document IDs
+            
+        Raises:
+            ValueError: If sparse vector support is not enabled
+        """
+        if not self.include_sparse:
+            raise ValueError(
+                "Sparse vector support not enabled. Set include_sparse=True when "
+                "initializing."
+            )
+            
+        if len(documents) != len(sparse_embeddings):
+            raise ValueError(
+                "Number of documents must match number of sparse embeddings"
+            )
+            
+        # Generate IDs if not provided
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in documents]
+            
+        # Prepare data for insertion
+        data = []
+        for i, (doc, sparse_emb) in enumerate(zip(documents, sparse_embeddings)):
+            # Generate dense embedding for the document
+            dense_embedding = self.embedding_function.embed_query(doc.page_content)
+            
+            record = {
+                self.primary_field: ids[i],
+                self.text_field: doc.page_content,
+                self.vector_field: dense_embedding,
+                self.sparse_vector_field: sparse_emb,
+                self.metadata_field: doc.metadata,
+            }
+            data.append(record)
+        
+        # Insert data using ObVecClient
+        self.obvector.insert(self.table_name, data)
+        return ids
+    
+    def add_documents_with_fulltext(
+        self,
+        documents: List[Document],
+        fulltext_content: List[str],
+        ids: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        Add documents with full-text content for full-text search.
+        
+        Args:
+            documents: List of documents to add
+            fulltext_content: List of full-text content strings
+            ids: Optional list of document IDs
+            
+        Returns:
+            List of document IDs
+            
+        Raises:
+            ValueError: If full-text search support is not enabled
+        """
+        if not self.include_fulltext:
+            raise ValueError(
+                "Full-text search support not enabled. Set include_fulltext=True "
+                "when initializing."
+            )
+        
+        if len(documents) != len(fulltext_content):
+            raise ValueError(
+                "Number of documents must match number of fulltext content items"
+            )
+        
+        # Generate IDs if not provided
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in documents]
+        
+        # Prepare data for insertion
+        data = []
+        for i, (doc, fulltext) in enumerate(zip(documents, fulltext_content)):
+            # Generate dense embedding for the document
+            dense_embedding = self.embedding_function.embed_query(doc.page_content)
+            
+            record = {
+                self.primary_field: ids[i],
+                self.text_field: doc.page_content,
+                self.vector_field: dense_embedding,
+                self.fulltext_field: fulltext,
+                self.metadata_field: doc.metadata,
+            }
+            data.append(record)
+        
+        # Insert data using ObVecClient
+        self.obvector.insert(self.table_name, data)
+        return ids
+
+    def similarity_search_with_sparse_vector(
+        self,
+        sparse_query: Dict[int, float],
+        k: int = 4,
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Document]:
+        """
+        Perform similarity search using sparse vectors.
+
+        Args:
+            sparse_query: Sparse vector query (dict of index: value)
+            k: Number of results to return
+            filter: Optional metadata filter
+
+        Returns:
+            List of similar documents
+            
+        Raises:
+            ValueError: If sparse vector support is not enabled
+        """
+        if not self.include_sparse:
+            raise ValueError(
+                "Sparse vector support not enabled. Set include_sparse=True when "
+                "initializing."
+            )
+        
+        # Perform sparse vector search using ann_search
+        results = self.obvector.ann_search(
+            table_name=self.table_name,
+            vec_data=sparse_query,
+            vec_column_name=self.sparse_vector_field,
+            distance_func=inner_product,
+            topk=k,
+            where_clause=filter,
+        )
+        
+        return self._convert_results_to_documents(results)
+    
+    def _combine_hybrid_results(
+        self, 
+        vector_results, 
+        fulltext_results, 
+        k: int
+    ) -> List:
+        """
+        Combine and rank results from vector and full-text search.
+        
+        Args:
+            vector_results: Results from vector similarity search (CursorResult)
+            fulltext_results: Results from full-text search (CursorResult)
+            k: Number of final results to return
+            
+        Returns:
+            Combined and ranked results
+        """
+        # Convert CursorResult to list of dictionaries
+        vector_list = []
+        if vector_results:
+            for row in vector_results:
+                if hasattr(row, '_asdict'):
+                    vector_list.append(row._asdict())
+                elif hasattr(row, '_mapping'):
+                    vector_list.append(dict(row._mapping))
+                else:
+                    vector_list.append(row)
+        
+        fulltext_list = []
+        if fulltext_results:
+            for row in fulltext_results:
+                if hasattr(row, '_asdict'):
+                    fulltext_list.append(row._asdict())
+                elif hasattr(row, '_mapping'):
+                    fulltext_list.append(dict(row._mapping))
+                else:
+                    fulltext_list.append(row)
+        
+        # Create a dictionary to store combined scores
+        combined_scores = {}
+        
+        # Process vector results (higher weight for semantic similarity)
+        for i, result in enumerate(vector_list):
+            doc_id = result.get('id') if isinstance(result, dict) else result[0]
+            # Normalize to 0-1
+            vector_score = 1.0 - (i / len(vector_list)) if vector_list else 0
+            combined_scores[doc_id] = (
+                combined_scores.get(doc_id, 0) + vector_score * 0.7
+            )
+        
+        # Process full-text results (lower weight for keyword matching)
+        for i, result in enumerate(fulltext_list):
+            doc_id = result.get('id') if isinstance(result, dict) else result[0]
+            # Normalize to 0-1
+            fulltext_score = 1.0 - (i / len(fulltext_list)) if fulltext_list else 0
+            combined_scores[doc_id] = (
+                combined_scores.get(doc_id, 0) + fulltext_score * 0.3
+            )
+        
+        # Sort by combined score and get top k
+        sorted_docs = sorted(
+            combined_scores.items(), key=lambda x: x[1], reverse=True
+        )[:k]
+        
+        # Return results in the same format as input
+        final_results = []
+        for doc_id, score in sorted_docs:
+            # Find the original result from either vector or fulltext results
+            for result in vector_list + fulltext_list:
+                result_id = result.get('id') if isinstance(result, dict) else result[0]
+                if result_id == doc_id:
+                    final_results.append(result)
+                    break
+        
+        return final_results
+    
+    def _combine_multi_modal_results(
+        self, 
+        all_results: List[tuple], 
+        k: int,
+        modality_weights: Optional[Dict[str, float]] = None
+    ) -> List:
+        """
+        Combine and rank results from multiple search modalities.
+        
+        Args:
+            all_results: List of (modality_type, results) tuples
+            k: Number of final results to return
+            modality_weights: Optional dictionary specifying weights for each modality
+            
+        Returns:
+            Combined and ranked results
+        """
+        # Use provided weights or default weights
+        if modality_weights is None:
+            modality_weights = {
+                'vector': 0.5,      # Semantic similarity
+                'sparse': 0.3,      # Keyword matching
+                'fulltext': 0.2     # Text search
+            }
+        
+        combined_scores = {}
+        all_converted_results = {}  # Store converted results by modality
+        
+        # Process results from each modality
+        for modality_type, results in all_results:
+            weight = modality_weights.get(modality_type, 0.1)
+            
+            # Convert CursorResult to list if needed
+            results_list = []
+            if results:
+                for row in results:
+                    if hasattr(row, '_asdict'):
+                        results_list.append(row._asdict())
+                    elif hasattr(row, '_mapping'):
+                        results_list.append(dict(row._mapping))
+                    else:
+                        results_list.append(row)
+            
+            # Store converted results for later use
+            all_converted_results[modality_type] = results_list
+            
+            for i, result in enumerate(results_list):
+                doc_id = result.get('id') if isinstance(result, dict) else result[0]
+                # Normalize score based on position (higher position = lower score)
+                normalized_score = 1.0 - (i / len(results_list)) if results_list else 0
+                combined_scores[doc_id] = (
+                    combined_scores.get(doc_id, 0) + normalized_score * weight
+                )
+        
+        # Sort by combined score and get top k
+        sorted_docs = sorted(
+            combined_scores.items(), key=lambda x: x[1], reverse=True
+        )[:k]
+        
+        # Return results in the same format as input
+        final_results = []
+        for doc_id, score in sorted_docs:
+            # Find the original result from any modality
+            for modality_type, results_list in all_converted_results.items():
+                for result in results_list:
+                    result_id = (
+                        result.get('id') if isinstance(result, dict) else result[0]
+                    )
+                    if result_id == doc_id:
+                        final_results.append(result)
+                        break
+                if len(final_results) > 0 and final_results[-1] == result:
+                    break
+        
+        return final_results
+
+    def similarity_search_with_fulltext(
+        self,
+        query: str,
+        fulltext_query: str,
+        k: int = 4,
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Document]:
+        """
+        Perform hybrid search combining vector similarity and full-text search.
+        
+        This method performs a true hybrid search by:
+        1. Using vector similarity search for semantic matching
+        2. Using full-text search for keyword matching
+        3. Combining and ranking results from both modalities
+
+        Args:
+            query: Vector similarity query
+            fulltext_query: Full-text search query
+            k: Number of results to return
+            filter: Optional metadata filter
+
+        Returns:
+            List of similar documents ranked by hybrid score
+            
+        Raises:
+            ValueError: If full-text search support is not enabled
+        """
+        if not self.include_fulltext:
+            raise ValueError(
+                "Full-text search support not enabled. Set include_fulltext=True "
+                "when initializing."
+            )
+        
+        # Step 1: Vector similarity search
+        query_embedding = self.embedding_function.embed_query(query)
+        vector_results = self.obvector.ann_search(
+            table_name=self.table_name,
+            vec_data=query_embedding,
+            vec_column_name=self.vector_field,
+            distance_func=self._get_distance_function(self.vidx_metric_type),
+            topk=k * 2,  # Get more results for better ranking
+            where_clause=filter,
+        )
+        
+        # Step 2: Full-text search using post_ann_search with str_list
+        fulltext_results = self.obvector.post_ann_search(
+            table_name=self.table_name,
+            vec_data=query_embedding,
+            vec_column_name=self.vector_field,
+            distance_func=self._get_distance_function(self.vidx_metric_type),
+            topk=k * 2,
+            str_list=[fulltext_query],  # Use str_list for full-text search
+            where_clause=filter,
+        )
+        
+        # Step 3: Combine and rank results
+        combined_results = self._combine_hybrid_results(
+            vector_results, fulltext_results, k
+        )
+        
+        return self._convert_results_to_documents(combined_results)
+
+    def advanced_hybrid_search(
+        self,
+        vector_query: Optional[str] = None,
+        sparse_query: Optional[Dict[int, float]] = None,
+        fulltext_query: Optional[str] = None,
+        k: int = 4,
+        modality_weights: Optional[Dict[str, float]] = None,
+    ) -> List[Document]:
+        """
+        Perform advanced hybrid search combining multiple modalities.
+
+        Args:
+            vector_query: Optional vector similarity query
+            sparse_query: Optional sparse vector query
+            fulltext_query: Optional full-text search query
+            k: Number of results to return
+            modality_weights: Optional dictionary specifying weights for each modality.
+                             Keys: 'vector', 'sparse', 'fulltext'
+                             Values: float weights (should sum to 1.0)
+                             Default: {'vector': 0.5, 'sparse': 0.3, 'fulltext': 0.2}
+
+        Returns:
+            List of similar documents
+            
+        Raises:
+            ValueError: If no search modality is provided, required features are
+                not enabled, or weights don't sum to 1.0
+        """
+        if not any([vector_query, sparse_query, fulltext_query]):
+            raise ValueError("At least one search modality must be provided")
+            
+        if sparse_query and not self.include_sparse:
+            raise ValueError(
+                "Sparse vector support not enabled. Set include_sparse=True when "
+                "initializing."
+            )
+        
+        if fulltext_query and not self.include_fulltext:
+            raise ValueError(
+                "Full-text search support not enabled. Set include_fulltext=True "
+                "when initializing."
+            )
+        
+        # Validate and set up modality weights
+        default_weights = {
+            'vector': 0.5,
+            'sparse': 0.3,
+            'fulltext': 0.2
+        }
+        
+        if modality_weights is None:
+            modality_weights = default_weights
+        else:
+            # Validate weights
+            total_weight = sum(modality_weights.values())
+            if abs(total_weight - 1.0) > 0.01:  # Allow small floating point errors
+                raise ValueError(
+                    f"Modality weights must sum to 1.0, got {total_weight}"
+                )
+            
+            # Ensure all required keys are present
+            for key in default_weights.keys():
+                if key not in modality_weights:
+                    modality_weights[key] = 0.0
+        
+        # Collect results from all available modalities
+        all_results = []
+        
+        # Vector similarity search
+        if vector_query:
+            query_embedding = self.embedding_function.embed_query(vector_query)
+            vector_results = self.obvector.ann_search(
+                table_name=self.table_name,
+                vec_data=query_embedding,
+                vec_column_name=self.vector_field,
+                distance_func=self._get_distance_function(self.vidx_metric_type),
+                topk=k * 2,
+            )
+            all_results.append(('vector', vector_results))
+        
+            # Sparse vector search
+        if sparse_query:
+            sparse_results = self.obvector.ann_search(
+                table_name=self.table_name,
+                vec_data=sparse_query,
+                vec_column_name=self.sparse_vector_field,
+                distance_func=inner_product,
+                topk=k * 2,
+            )
+            all_results.append(('sparse', sparse_results))
+        
+        # Full-text search
+        if fulltext_query:
+            if vector_query:
+                # Use the same embedding for consistency
+                query_embedding = self.embedding_function.embed_query(vector_query)
+        else:
+            # Create a dummy embedding for full-text only search
+            query_embedding = [0.0] * 6
+        
+        if fulltext_query:
+            fulltext_results = self.obvector.post_ann_search(
+                table_name=self.table_name,
+                vec_data=query_embedding,
+                vec_column_name=self.vector_field,
+                distance_func=self._get_distance_function(self.vidx_metric_type),
+                topk=k * 2,
+                str_list=[fulltext_query],
+            )
+            all_results.append(('fulltext', fulltext_results))
+        
+        # Combine results from all modalities
+        if len(all_results) == 1:
+            # Single modality, return as is
+            single_results = all_results[0][1]
+            # Convert CursorResult to list and take first k results
+            results_list = []
+            if single_results:
+                for i, row in enumerate(single_results):
+                    if i >= k:
+                        break
+                    if hasattr(row, '_asdict'):
+                        results_list.append(row._asdict())
+                    elif hasattr(row, '_mapping'):
+                        results_list.append(dict(row._mapping))
+                    else:
+                        results_list.append(row)
+            return self._convert_results_to_documents(results_list)
+        else:
+            # Multiple modalities, combine and rank
+            combined_results = self._combine_multi_modal_results(
+                all_results, k, modality_weights
+            )
+            return self._convert_results_to_documents(combined_results)
+
+    def similarity_search_with_advanced_filters(
+        self,
+        query: str,
+        filters: Dict[str, Any],
+        k: int = 4,
+    ) -> List[Document]:
+        """
+        Perform similarity search with advanced filtering capabilities.
+
+        Args:
+            query: Vector similarity query
+            filters: Dictionary of filters including scalar, fulltext, and
+                metadata filters
+            k: Number of results to return
+
+        Returns:
+            List of similar documents
+        """
+        # Perform advanced filtering with multiple search modalities
+        query_embedding = self.embedding_function.embed_query(query)
+        
+        # Extract different types of filters
+        where_clause = None
+        fulltext_query = None
+        # scalar_filters = []  # Currently not used in implementation
+        
+        if 'metadata' in filters:
+            where_clause = filters['metadata']
+        if 'fulltext' in filters:
+            fulltext_query = filters['fulltext']
+        # Extract scalar filters if present (currently not used in implementation)
+        # if 'scalar' in filters:
+        #     scalar_filters = filters['scalar']
+        
+        # Collect results from different search modalities
+        all_results = []
+        
+        # Vector similarity search with metadata filtering
+        vector_results = self.obvector.ann_search(
+            table_name=self.table_name,
+            vec_data=query_embedding,
+            vec_column_name=self.vector_field,
+            distance_func=self._get_distance_function(self.vidx_metric_type),
+            topk=k * 2,
+            where_clause=where_clause,
+        )
+        all_results.append(('vector', vector_results))
+        
+        # Full-text search if specified
+        if fulltext_query and self.include_fulltext:
+            fulltext_results = self.obvector.post_ann_search(
+            table_name=self.table_name,
+                vec_data=query_embedding,
+                vec_column_name=self.vector_field,
+                distance_func=self._get_distance_function(self.vidx_metric_type),
+                topk=k * 2,
+                str_list=[fulltext_query],
+                where_clause=where_clause,
+            )
+            all_results.append(('fulltext', fulltext_results))
+        
+        # Combine results if multiple modalities
+        if len(all_results) == 1:
+            return self._convert_results_to_documents(all_results[0][1][:k])
+        else:
+            combined_results = self._combine_multi_modal_results(all_results, k)
+            return self._convert_results_to_documents(combined_results)
