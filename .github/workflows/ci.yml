@@ -33,7 +33,7 @@ jobs:
 
     - name: Install additional test dependencies
       run: |
-        poetry run pip install langchain-community
+        poetry run pip install langchain-tests langchain-community
 
     - name: Start OceanBase 4.3.5 container
       run: |
