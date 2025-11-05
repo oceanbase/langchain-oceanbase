@@ -30,6 +30,14 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 pip install -U langchain-oceanbase
 ```
 
+### Requirements
+
+- Python >=3.10
+- langchain-core >=1.0.0
+- pyobvector >=0.2.17
+
+> **Tip**: The current version supports `langchain-core >=1.0.0`
+
 We recommend using Docker to deploy OceanBase:
 
 ```shell
