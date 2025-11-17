@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "langchain-oceanbase"
-version = "0.2.5"
+version = "0.2.6"
 description = "An integration package connecting OceanBase and LangChain"
 authors = ["shanhaikang.shk <shanhaikang.shk@oceanbase.com>"]
 readme = "README.md"
