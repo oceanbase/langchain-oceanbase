@@ -4,145 +4,212 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: |
+          poetry install --with lint,typing --no-interaction --no-root
+
+      - name: Install package
+        run: |
+          poetry install --no-interaction
+
+      - name: Run ruff check
+        run: |
+          poetry run ruff check langchain_oceanbase/
+
+      - name: Check code formatting
+        run: |
+          poetry run ruff format langchain_oceanbase/ --check
+
+      - name: Run mypy
+        run: |
+          poetry run mypy langchain_oceanbase/ --cache-dir .mypy_cache || true
+
   test:
     name: Comprehensive Test with OceanBase 4.3.5
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install Poetry
-      run: |
-        pip install poetry
-        
-    - name: Install dependencies
-      run: |
-        poetry install --with lint,typing,test,test_integration
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Install additional test dependencies
-      run: |
-        poetry run pip install langchain-tests langchain-community
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Start OceanBase 4.3.5 container
-      run: |
-        set -e
-        export tag="4.3.5"
-        echo "Starting OceanBase container with tag ${tag}"
-        docker run -id --name "langchain_oceanbase_test" \
-          -e MODE=mini \
-          -e OB_SERVER_IP=127.0.0.1 \
-          -p 2881:2881 \
-          oceanbase/oceanbase-ce:4.3.5-lts
-        echo "OceanBase container started"
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
 
-    - name: Wait for OceanBase to be ready
-      run: |
-        set -e
-        echo "Waiting for OceanBase to be ready..."
-        timeout=600  # 10 minutes timeout
-        start_time=$(date +%s)
-        
-        while [ $timeout -gt 0 ]; do
-          current_time=$(date +%s)
-          elapsed=$((current_time - start_time))
-          echo "Elapsed time: ${elapsed}s, remaining timeout: ${timeout}s"
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: |
+          poetry install --with lint,typing,test,test_integration --no-interaction --no-root
+
+      - name: Install package and dependencies
+        run: |
+          poetry install --with lint,typing,test,test_integration --no-interaction
+
+      - name: Start OceanBase 4.3.5 container
+        run: |
+          set -e
+          export tag="4.3.5"
+          echo "Starting OceanBase container with tag ${tag}"
+          docker run -id --name "langchain_oceanbase_test" \
+            -e MODE=mini \
+            -e OB_SERVER_IP=127.0.0.1 \
+            -p 2881:2881 \
+            oceanbase/oceanbase-ce:4.3.5-lts
+          echo "OceanBase container started"
+
+      - name: Wait for OceanBase to be ready
+        run: |
+          set -e
+          echo "Waiting for OceanBase to be ready..."
+          timeout=600  # 10 minutes timeout
+          start_time=$(date +%s)
           
-          # Check if the container is still running
-          if ! docker ps | grep -q "langchain_oceanbase_test"; then
-            echo "Container is not running!"
-            docker logs langchain_oceanbase_test
+          while [ $timeout -gt 0 ]; do
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+            echo "Elapsed time: ${elapsed}s, remaining timeout: ${timeout}s"
+          
+            # Check if the container is still running
+            if ! docker ps | grep -q "langchain_oceanbase_test"; then
+              echo "Container is not running!"
+              docker logs langchain_oceanbase_test || true
+              exit 1
+            fi
+          
+            # Check for boot success message
+            if docker logs langchain_oceanbase_test 2>&1 | grep -q "boot success!"; then
+              echo "OceanBase is ready!"
+              break
+            fi
+          
+            sleep 10
+            timeout=$((timeout - 10))
+          done
+          
+          if [ $timeout -le 0 ]; then
+            echo "OceanBase did not start in time!"
+            echo "Container logs:"
+            docker logs langchain_oceanbase_test || true
             exit 1
           fi
+
+      - name: Configure OceanBase for vector operations
+        run: |
+          set -e
+          echo "Configuring OceanBase for vector operations..."
           
-          # Check for boot success message
-          if docker logs langchain_oceanbase_test 2>&1 | grep -q "boot success!"; then
-            echo "OceanBase is ready!"
-            break
+          # Wait a bit more for the database to be fully ready
+          sleep 30
+          
+          # Set vector memory limit
+          docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
+            -e "ALTER SYSTEM ob_vector_memory_limit_percentage = 30;" || echo "Vector memory config may have failed, continuing..."
+          
+          # Create test database if needed
+          docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
+            -e "CREATE DATABASE IF NOT EXISTS test;" || echo "Database creation may have failed, continuing..."
+          
+          echo "OceanBase configuration completed"
+
+      - name: Run comprehensive tests
+        run: |
+          set -e
+          echo "Running comprehensive tests..."
+          poetry run python tests/test_comprehensive.py
+
+      - name: Run integration tests
+        run: |
+          set -e
+          echo "Running integration tests..."
+          poetry run python -m pytest tests/integration_tests/ -v
+
+      - name: Cleanup and show results
+        if: always()
+        run: |
+          echo "Test completed. Cleaning up..."
+          
+          # Show container logs if needed
+          if docker ps -a | grep -q "langchain_oceanbase_test"; then
+            echo "=== OceanBase Container Status ==="
+            docker ps -a | grep langchain_oceanbase_test || true
+            
+            echo "=== OceanBase Container Logs (last 50 lines) ==="
+            docker logs --tail 50 langchain_oceanbase_test || true
           fi
           
-          sleep 10
-          timeout=$((timeout - 10))
-        done
-        
-        if [ $timeout -le 0 ]; then
-          echo "OceanBase did not start in time!"
-          echo "Container logs:"
-          docker logs langchain_oceanbase_test
-          exit 1
-        fi
-
-    - name: Configure OceanBase for vector operations
-      run: |
-        set -e
-        echo "Configuring OceanBase for vector operations..."
-        
-        # Wait a bit more for the database to be fully ready
-        sleep 30
-        
-        # Set vector memory limit
-        docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
-          -e "ALTER SYSTEM ob_vector_memory_limit_percentage = 30;" || echo "Vector memory config may have failed, continuing..."
-        
-        # Create test database if needed
-        docker exec langchain_oceanbase_test obclient -h127.0.0.1 -P2881 -uroot@test -p'' \
-          -e "CREATE DATABASE IF NOT EXISTS test;" || echo "Database creation may have failed, continuing..."
+          # Clean up container
+          docker rm -f langchain_oceanbase_test || true
           
-        echo "OceanBase configuration completed"
-
-    - name: Run comprehensive tests
-      run: |
-        set -e
-        echo "Running comprehensive tests..."
-        poetry run python tests/test_comprehensive.py
-
-    - name: Run integration tests
-      run: |
-        set -e
-        echo "Running integration tests..."
-        poetry run python -m pytest tests/integration_tests/ -v
-
-    - name: Cleanup and show results
-      if: always()
-      run: |
-        echo "Test completed. Cleaning up..."
-        
-        # Show container logs if needed
-        if docker ps -a | grep -q "langchain_oceanbase_test"; then
-          echo "=== OceanBase Container Status ==="
-          docker ps -a | grep langchain_oceanbase_test || true
-          
-          echo "=== OceanBase Container Logs (last 50 lines) ==="
-          docker logs --tail 50 langchain_oceanbase_test || true
-        fi
-        
-        # Clean up container
-        docker rm -f langchain_oceanbase_test || true
-        
-        echo "Cleanup completed"
+          echo "Cleanup completed"
 
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: test
+    needs: [lint, test]
     if: always()
     
     steps:
       - name: Check test results
         run: |
-          if [ "${{ needs.test.result }}" == "success" ]; then
+          lint_result="${{ needs.lint.result }}"
+          test_result="${{ needs.test.result }}"
+          
+          if [ "$lint_result" == "success" ] && [ "$test_result" == "success" ]; then
             echo "🎉 All tests passed successfully!"
+            echo "✅ Linting and type checking passed"
             echo "✅ Comprehensive tests passed"
             echo "✅ Integration tests passed"
             echo "✅ All index types tested (HNSW, IVF, FLAT)"
@@ -153,6 +220,12 @@ jobs:
             echo "✅ OceanBase 4.3.5 compatibility confirmed"
           else
             echo "❌ Some tests failed!"
+            if [ "$lint_result" != "success" ]; then
+              echo "❌ Linting/type checking failed"
+            fi
+            if [ "$test_result" != "success" ]; then
+              echo "❌ Test execution failed"
+            fi
             echo "Please check the logs above for details."
             exit 1
           fi
