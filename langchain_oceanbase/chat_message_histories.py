@@ -88,6 +88,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
         - Full compatibility with LangChain ecosystem
 
     """
+
     def __init__(
         self,
         table_name: str = DEFAULT_OCEANBASE_CHAT_MESSAGE_TABLE_NAME,
@@ -97,7 +98,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
         """Initialize the OceanBase chat message history.
 
         Args:
-            table_name (str): Name of the table to store chat messages. 
+            table_name (str): Name of the table to store chat messages.
                 Defaults to "langchain_chat_message".
             connection_args (Optional[Dict[str, Any]]): Connection parameters for OceanBase.
                 If None, uses DEFAULT_OCEANBASE_CONNECTION. Should include:
@@ -123,7 +124,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
 
     def _create_client(self, **kwargs):  # type: ignore[no-untyped-def]
         """Create and initialize the OceanBase vector client.
-        
+
         Args:
             **kwargs: Additional arguments passed to ObVecClient constructor.
         """
@@ -143,7 +144,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
 
     def _create_table_if_not_exists(self) -> None:
         """Create the chat message table if it doesn't exist.
-        
+
         Creates a table with the following schema:
         - id: Primary key (String, 255 chars) - Unique message identifier
         - session_id: Session identifier (String, 255 chars) - Groups messages by session
@@ -173,11 +174,11 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
     @property
     def messages(self) -> List[BaseMessage]:
         """Retrieve all messages from the chat history.
-        
+
         Returns:
             List[BaseMessage]: List of all messages in chronological order.
                 Supports HumanMessage, AIMessage, SystemMessage, FunctionMessage, and ToolMessage.
-                
+
         Note:
             Messages are sorted by their created_at timestamp to maintain chronological order.
             If the table doesn't exist, returns an empty list.
@@ -249,7 +250,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
 
     def add_message(self, message: BaseMessage) -> None:
         """Add a message to the chat history.
-        
+
         Args:
             message (BaseMessage): The message to add. Supports all LangChain message types:
                 - HumanMessage: User messages
@@ -257,7 +258,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
                 - SystemMessage: System instructions
                 - FunctionMessage: Function call messages (requires 'name' attribute)
                 - ToolMessage: Tool execution messages (requires 'tool_call_id' attribute)
-                
+
         Note:
             - Each message gets a unique UUID as its ID
             - Messages are timestamped with millisecond precision
@@ -310,10 +311,10 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
 
     def clear(self) -> None:
         """Clear all chat message history.
-        
+
         Removes all messages from the chat history table. This operation is irreversible.
         If the table doesn't exist, this method does nothing.
-        
+
         Note:
             This method deletes all records from the table but does not drop the table itself.
             The table structure and schema remain intact for future use.
