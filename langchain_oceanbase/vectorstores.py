@@ -305,19 +305,21 @@ class OceanbaseVectorStore(VectorStore):
         self.vidx_name = vidx_name
         self.partition = partitions
         self.hnsw_ef_search = -1
-        
+
         # Hybrid search parameters
         self.include_sparse = include_sparse
         self.include_fulltext = include_fulltext
         self.sparse_vector_field = "sparse_embedding"
         self.fulltext_field = "fulltext_content"
-        
+
         # Define table names for sparse and fulltext operations
         # These tables are independent and don't affect each other
         self.sparse_table_name = f"{table_name}_sparse" if self.include_sparse else None
         # Fulltext requires sparse support, so use sparse_fulltext table
-        self.fulltext_table_name = f"{table_name}_sparse_fulltext" if self.include_fulltext else None
-        
+        self.fulltext_table_name = (
+            f"{table_name}_sparse_fulltext" if self.include_fulltext else None
+        )
+
         if self.include_fulltext and not self.include_sparse:
             raise ValueError(
                 "Full-text search requires sparse vector support. "
@@ -364,7 +366,7 @@ class OceanbaseVectorStore(VectorStore):
             autoload_with=self.obvector.engine,
         )
         column_names = [column.name for column in table.columns]
-        
+
         # Calculate expected column count including hybrid search fields
         base_columns = 4  # id, vector, text, metadata
         hybrid_columns = 0
@@ -373,7 +375,7 @@ class OceanbaseVectorStore(VectorStore):
         if self.include_fulltext:
             hybrid_columns += 1
         extra_columns = len(self.extra_columns or [])
-        
+
         expected_columns = base_columns + hybrid_columns + extra_columns
         assert len(column_names) == expected_columns, (
             f"Expected {expected_columns} columns, got {len(column_names)}: "
@@ -395,14 +397,14 @@ class OceanbaseVectorStore(VectorStore):
             Column(self.text_field, LONGTEXT),
             Column(self.metadata_field, JSON),
         ]
-        
+
         # Add hybrid search columns if enabled
         if self.include_sparse:
             cols.append(Column(self.sparse_vector_field, SPARSE_VECTOR()))
-            
+
         if self.include_fulltext:
             cols.append(Column(self.fulltext_field, LONGTEXT))
-            
+
         if self.extra_columns is not None:
             cols.extend(self.extra_columns)
 
@@ -414,32 +416,20 @@ class OceanbaseVectorStore(VectorStore):
             metric_type=self.vidx_metric_type,
             params=self.vidx_algo_params,
         )
-        
-        sparse_vidx_needs_manual_sql = False
-        sparse_index_type_with = None
+
+        # Add sparse vector index if enabled
         if self.include_sparse:
-            is_seekdb = False
-            try:
-                is_seekdb = self.obvector._is_seekdb()
-            except (AttributeError, Exception):
-                pass
-            
-            if not is_seekdb:
-                try:
-                    with self.obvector.engine.connect() as conn:
-                        result = conn.execute(text("SELECT VERSION()"))
-                        version_str = [r[0] for r in result][0]
-                        is_seekdb = "SeekDB" in version_str
-                        logger.debug(f"Version query result: {version_str}, is_seekdb: {is_seekdb}")
-                except Exception as e:
-                    logger.warning(f"Failed to query version: {e}")
-            
-            sparse_vidx_needs_manual_sql = True
-            if is_seekdb:
-                sparse_index_type_with = "sindi"
-            else:
-                sparse_index_type_with = None
-            logger.debug(f"Sparse index config: is_seekdb={is_seekdb}, sparse_index_type_with={sparse_index_type_with}")
+            sparse_index_kwargs = {}
+            # Check if SeekDB and add sindi type
+            if self.obvector._is_seekdb():
+                sparse_index_kwargs["sparse_index_type"] = "sindi"
+            vidx_params.add_index(
+                field_name=self.sparse_vector_field,
+                index_type=VecIndexType.DAAT,
+                index_name=f"{self.vidx_name}_sparse",
+                metric_type="inner_product",
+                **sparse_index_kwargs,
+            )
 
         fts_idxs = None
         if self.include_fulltext:
@@ -451,66 +441,14 @@ class OceanbaseVectorStore(VectorStore):
                 )
             ]
 
-        if sparse_vidx_needs_manual_sql:
-            from sqlalchemy.schema import CreateTable
-            from pyobvector.schema.ob_table import ObTable
-            
-            table = ObTable(
-                self.table_name,
-                self.obvector.metadata_obj,
-                *cols,
-                extend_existing=True,
-            )
-            
-            create_table_sql = str(CreateTable(table).compile(self.obvector.engine))
-            new_sql = create_table_sql[:create_table_sql.rfind(')')]
-            
-            if sparse_index_type_with:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (type={sparse_index_type_with}, distance=inner_product)"
-            else:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (distance=inner_product)"
-            
-            new_sql += "\n)"
-            
-            logger.debug(f"Sparse index SQL: sparse_index_type_with={sparse_index_type_with}, SQL={new_sql}")
-            
-            with self.obvector.engine.connect() as conn:
-                with conn.begin():
-                    conn.execute(text(new_sql))
-                    
-                    if self.partition is not None:
-                        conn.execute(
-                            text(f"ALTER TABLE `{self.table_name}` {self.partition.do_compile()}")
-                        )
-                    
-                    for vidx in vidx_params:
-                        from pyobvector.schema.vector_index import VectorIndex
-                        vidx_obj = VectorIndex(
-                            vidx.index_name,
-                            table.c[vidx.field_name],
-                            params=vidx.param_str(),
-                        )
-                        vidx_obj.create(self.obvector.engine, checkfirst=True)
-                    
-                    if fts_idxs is not None:
-                        for fts_idx in fts_idxs:
-                            from pyobvector.schema.full_text_index import FtsIndex
-                            idx_cols = [table.c[field_name] for field_name in fts_idx.field_names]
-                            fts_idx_obj = FtsIndex(
-                                fts_idx.index_name,
-                                fts_idx.param_str(),
-                                *idx_cols,
-                            )
-                            fts_idx_obj.create(self.obvector.engine, checkfirst=True)
-        else:
-            self.obvector.create_table_with_index_params(
-                table_name=self.table_name,
-                columns=cols,
-                indexes=None,
-                vidxs=vidx_params,
-                fts_idxs=fts_idxs,
-                partitions=self.partition,
-            )
+        self.obvector.create_table_with_index_params(
+            table_name=self.table_name,
+            columns=cols,
+            indexes=None,
+            vidxs=vidx_params,
+            fts_idxs=fts_idxs,
+            partitions=self.partition,
+        )
 
     def _create_sparse_table(self, embedding_dim: int) -> None:
         """Create a table for sparse vector search only."""
@@ -518,7 +456,7 @@ class OceanbaseVectorStore(VectorStore):
             return
         if self.obvector.check_table_exists(self.sparse_table_name):
             return
-        
+
         cols = [
             Column(
                 self.primary_field, String(4096), primary_key=True, autoincrement=False
@@ -528,10 +466,10 @@ class OceanbaseVectorStore(VectorStore):
             Column(self.metadata_field, JSON),
             Column(self.sparse_vector_field, SPARSE_VECTOR()),
         ]
-        
+
         if self.extra_columns is not None:
             cols.extend(self.extra_columns)
-        
+
         vidx_params = self.obvector.prepare_index_params()
         vidx_params.add_index(
             field_name=self.vector_field,
@@ -540,90 +478,36 @@ class OceanbaseVectorStore(VectorStore):
             metric_type=self.vidx_metric_type,
             params=self.vidx_algo_params,
         )
-        
-        # Handle sparse vector index
-        sparse_vidx_needs_manual_sql = False
-        sparse_index_type_with = None
-        is_seekdb = False
-        try:
-            is_seekdb = self.obvector._is_seekdb()
-        except (AttributeError, Exception):
-            pass
-        
-        if not is_seekdb:
-            try:
-                with self.obvector.engine.connect() as conn:
-                    result = conn.execute(text("SELECT VERSION()"))
-                    version_str = [r[0] for r in result][0]
-                    is_seekdb = "SeekDB" in version_str
-                    logger.debug(f"Version query result: {version_str}, is_seekdb={is_seekdb}")
-            except Exception as e:
-                logger.warning(f"Failed to query version: {e}")
-        
-        sparse_vidx_needs_manual_sql = True
-        if is_seekdb:
-            sparse_index_type_with = "sindi"
-        else:
-            sparse_index_type_with = None
-        logger.debug(f"Sparse index config: is_seekdb={is_seekdb}, sparse_index_type_with={sparse_index_type_with}")
-        
-        if sparse_vidx_needs_manual_sql:
-            from sqlalchemy.schema import CreateTable
-            from pyobvector.schema.ob_table import ObTable
-            
-            table = ObTable(
-                self.sparse_table_name,
-                self.obvector.metadata_obj,
-                *cols,
-                extend_existing=True,
-            )
-            
-            create_table_sql = str(CreateTable(table).compile(self.obvector.engine))
-            new_sql = create_table_sql[:create_table_sql.rfind(')')]
-            
-            if sparse_index_type_with:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (type={sparse_index_type_with}, distance=inner_product)"
-            else:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (distance=inner_product)"
-            
-            new_sql += "\n)"
-            
-            logger.debug(f"Sparse index SQL: sparse_index_type_with={sparse_index_type_with}, SQL={new_sql}")
-            
-            with self.obvector.engine.connect() as conn:
-                with conn.begin():
-                    conn.execute(text(new_sql))
-                    
-                    if self.partition is not None:
-                        conn.execute(
-                            text(f"ALTER TABLE `{self.sparse_table_name}` {self.partition.do_compile()}")
-                        )
-                    
-                    for vidx in vidx_params:
-                        from pyobvector.schema.vector_index import VectorIndex
-                        vidx_obj = VectorIndex(
-                            vidx.index_name,
-                            table.c[vidx.field_name],
-                            params=vidx.param_str(),
-                        )
-                        vidx_obj.create(self.obvector.engine, checkfirst=True)
-        else:
-            self.obvector.create_table_with_index_params(
-                table_name=self.sparse_table_name,
-                columns=cols,
-                indexes=None,
-                vidxs=vidx_params,
-                fts_idxs=None,
-                partitions=self.partition,
-            )
-    
+
+        # Add sparse vector index
+        sparse_index_kwargs = {}
+        # Check if SeekDB and add sindi type
+        if self.obvector._is_seekdb():
+            sparse_index_kwargs["sparse_index_type"] = "sindi"
+        vidx_params.add_index(
+            field_name=self.sparse_vector_field,
+            index_type=VecIndexType.DAAT,
+            index_name=f"{self.vidx_name}_sparse",
+            metric_type="inner_product",
+            **sparse_index_kwargs,
+        )
+
+        self.obvector.create_table_with_index_params(
+            table_name=self.sparse_table_name,
+            columns=cols,
+            indexes=None,
+            vidxs=vidx_params,
+            fts_idxs=None,
+            partitions=self.partition,
+        )
+
     def _create_sparse_fulltext_table(self, embedding_dim: int) -> None:
         """Create a table for both sparse vector and fulltext search."""
         if not self.fulltext_table_name:
             return
         if self.obvector.check_table_exists(self.fulltext_table_name):
             return
-        
+
         cols = [
             Column(
                 self.primary_field, String(4096), primary_key=True, autoincrement=False
@@ -634,10 +518,10 @@ class OceanbaseVectorStore(VectorStore):
             Column(self.sparse_vector_field, SPARSE_VECTOR()),
             Column(self.fulltext_field, LONGTEXT),
         ]
-        
+
         if self.extra_columns is not None:
             cols.extend(self.extra_columns)
-        
+
         vidx_params = self.obvector.prepare_index_params()
         vidx_params.add_index(
             field_name=self.vector_field,
@@ -646,33 +530,20 @@ class OceanbaseVectorStore(VectorStore):
             metric_type=self.vidx_metric_type,
             params=self.vidx_algo_params,
         )
-        
-        # Handle sparse vector index
-        sparse_vidx_needs_manual_sql = False
-        sparse_index_type_with = None
-        is_seekdb = False
-        try:
-            is_seekdb = self.obvector._is_seekdb()
-        except (AttributeError, Exception):
-            pass
-        
-        if not is_seekdb:
-            try:
-                with self.obvector.engine.connect() as conn:
-                    result = conn.execute(text("SELECT VERSION()"))
-                    version_str = [r[0] for r in result][0]
-                    is_seekdb = "SeekDB" in version_str
-                    logger.debug(f"Version query result: {version_str}, is_seekdb={is_seekdb}")
-            except Exception as e:
-                logger.warning(f"Failed to query version: {e}")
-        
-        sparse_vidx_needs_manual_sql = True
-        if is_seekdb:
-            sparse_index_type_with = "sindi"
-        else:
-            sparse_index_type_with = None
-        logger.debug(f"Sparse index config: is_seekdb={is_seekdb}, sparse_index_type_with={sparse_index_type_with}")
-        
+
+        # Add sparse vector index
+        sparse_index_kwargs = {}
+        # Check if SeekDB and add sindi type
+        if self.obvector._is_seekdb():
+            sparse_index_kwargs["sparse_index_type"] = "sindi"
+        vidx_params.add_index(
+            field_name=self.sparse_vector_field,
+            index_type=VecIndexType.DAAT,
+            index_name=f"{self.vidx_name}_sparse",
+            metric_type="inner_product",
+            **sparse_index_kwargs,
+        )
+
         fts_idxs = [
             FtsIndexParam(
                 index_name=f"{self.vidx_name}_fts_sparse_fulltext",
@@ -680,66 +551,15 @@ class OceanbaseVectorStore(VectorStore):
                 parser_type=FtsParser.NGRAM,
             )
         ]
-        
-        if sparse_vidx_needs_manual_sql:
-            from sqlalchemy.schema import CreateTable
-            from pyobvector.schema.ob_table import ObTable
-            
-            table = ObTable(
-                self.fulltext_table_name,
-                self.obvector.metadata_obj,
-                *cols,
-                extend_existing=True,
-            )
-            
-            create_table_sql = str(CreateTable(table).compile(self.obvector.engine))
-            new_sql = create_table_sql[:create_table_sql.rfind(')')]
-            
-            if sparse_index_type_with:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (type={sparse_index_type_with}, distance=inner_product)"
-            else:
-                new_sql += f",\n\tVECTOR INDEX {self.vidx_name}_sparse({self.sparse_vector_field}) with (distance=inner_product)"
-            
-            new_sql += "\n)"
-            
-            logger.debug(f"Sparse index SQL: sparse_index_type_with={sparse_index_type_with}, SQL={new_sql}")
-            
-            with self.obvector.engine.connect() as conn:
-                with conn.begin():
-                    conn.execute(text(new_sql))
-                    
-                    if self.partition is not None:
-                        conn.execute(
-                            text(f"ALTER TABLE `{self.fulltext_table_name}` {self.partition.do_compile()}")
-                        )
-                    
-                    for vidx in vidx_params:
-                        from pyobvector.schema.vector_index import VectorIndex
-                        vidx_obj = VectorIndex(
-                            vidx.index_name,
-                            table.c[vidx.field_name],
-                            params=vidx.param_str(),
-                        )
-                        vidx_obj.create(self.obvector.engine, checkfirst=True)
-                    
-                    for fts_idx in fts_idxs:
-                        from pyobvector.schema.full_text_index import FtsIndex
-                        idx_cols = [table.c[field_name] for field_name in fts_idx.field_names]
-                        fts_idx_obj = FtsIndex(
-                            fts_idx.index_name,
-                            fts_idx.param_str(),
-                            *idx_cols,
-                        )
-                        fts_idx_obj.create(self.obvector.engine, checkfirst=True)
-        else:
-            self.obvector.create_table_with_index_params(
-                table_name=self.fulltext_table_name,
-                columns=cols,
-                indexes=None,
-                vidxs=vidx_params,
-                fts_idxs=fts_idxs,
-                partitions=self.partition,
-            )
+
+        self.obvector.create_table_with_index_params(
+            table_name=self.fulltext_table_name,
+            columns=cols,
+            indexes=None,
+            vidxs=vidx_params,
+            fts_idxs=fts_idxs,
+            partitions=self.partition,
+        )
 
     def _create_table_with_index(self, embeddings: list) -> None:
         if self.obvector.check_table_exists(self.table_name):
@@ -748,6 +568,90 @@ class OceanbaseVectorStore(VectorStore):
 
         dim = len(embeddings[0])
         self._create_table_with_index_by_embedding_dim(dim)
+
+    def _determine_search_table(self) -> str:
+        """
+        Determine which table to use for search based on hybrid search configuration.
+
+        Returns:
+            str: Table name to use for search
+        """
+        search_table = self.table_name
+        if self.include_fulltext and self.fulltext_table_name:
+            # Fulltext table contains dense vectors, use it for vector search
+            try:
+                with self.obvector.engine.connect() as conn:
+                    fulltext_count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM `{self.fulltext_table_name}`")
+                    ).scalar()
+                    if fulltext_count > 0:
+                        search_table = self.fulltext_table_name
+            except Exception:
+                # If query fails, fall back to main table
+                pass
+        elif self.include_sparse and self.sparse_table_name:
+            # Sparse table also contains dense vectors, use it if fulltext table is empty
+            try:
+                with self.obvector.engine.connect() as conn:
+                    sparse_count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM `{self.sparse_table_name}`")
+                    ).scalar()
+                    if sparse_count > 0:
+                        search_table = self.sparse_table_name
+            except Exception:
+                # If query fails, fall back to main table
+                pass
+        return search_table
+
+    def _handle_hnsw_ef_search(self, search_param: dict) -> None:
+        """
+        Handle HNSW-specific efSearch parameter.
+
+        Args:
+            search_param: Search parameters dictionary
+        """
+        if self.index_type in ["HNSW", "HNSW_SQ"]:
+            ef_search = search_param.get(
+                "efSearch", self._get_default_search_params()["efSearch"]
+            )
+            if ef_search != self.hnsw_ef_search:
+                self.obvector.set_ob_hnsw_ef_search(ef_search)
+                self.hnsw_ef_search = ef_search
+
+    def _convert_results_to_documents(
+        self, results, include_score: bool = False
+    ) -> List[Document] | List[Tuple[Document, float]]:
+        """
+        Convert search results to Document objects.
+
+        Args:
+            results: CursorResult from ann_search
+            include_score: Whether to include score in results
+
+        Returns:
+            List[Document] or List[Tuple[Document, float]]: Converted documents
+        """
+        if include_score:
+            return [
+                (
+                    Document(
+                        id=r[2],
+                        page_content=r[0],
+                        metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
+                    ),
+                    r[3],
+                )
+                for r in results.fetchall()
+            ]
+        else:
+            return [
+                Document(
+                    id=r[2],
+                    page_content=r[0],
+                    metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
+                )
+                for r in results.fetchall()
+            ]
 
     def _parse_metric_type_str_to_dist_func(self) -> Any:
         if self.vidx_metric_type == "l2":
@@ -999,44 +903,9 @@ class OceanbaseVectorStore(VectorStore):
             return []
 
         search_param = param if param is not None else self._get_default_search_params()
+        self._handle_hnsw_ef_search(search_param)
+        search_table = self._determine_search_table()
 
-        # Handle HNSW-specific efSearch parameter
-        if self.index_type in ["HNSW", "HNSW_SQ"]:
-            ef_search = search_param.get(
-                "efSearch", self._get_default_search_params()["efSearch"]
-            )
-            if ef_search != self.hnsw_ef_search:
-                self.obvector.set_ob_hnsw_ef_search(ef_search)
-                self.hnsw_ef_search = ef_search
-
-        # Determine which table to search
-        # If hybrid search is enabled, prefer searching from tables with data
-        search_table = self.table_name
-        if self.include_fulltext and self.fulltext_table_name:
-            # Fulltext table contains dense vectors, use it for vector search
-            try:
-                with self.obvector.engine.connect() as conn:
-                    fulltext_count = conn.execute(
-                        text(f"SELECT COUNT(*) FROM `{self.fulltext_table_name}`")
-                    ).scalar()
-                    if fulltext_count > 0:
-                        search_table = self.fulltext_table_name
-            except Exception:
-                # If query fails, fall back to main table
-                pass
-        elif self.include_sparse and self.sparse_table_name:
-            # Sparse table also contains dense vectors, use it if fulltext table is empty
-            try:
-                with self.obvector.engine.connect() as conn:
-                    sparse_count = conn.execute(
-                        text(f"SELECT COUNT(*) FROM `{self.sparse_table_name}`")
-                    ).scalar()
-                    if sparse_count > 0:
-                        search_table = self.sparse_table_name
-            except Exception:
-                # If query fails, fall back to main table
-                pass
-        
         res = self.obvector.ann_search(
             table_name=search_table,
             vec_data=(embedding if not self.normalize else self._normalize(embedding)),
@@ -1051,21 +920,7 @@ class OceanbaseVectorStore(VectorStore):
             where_clause=([text(fltr)] if fltr is not None else None),
             **kwargs,
         )
-        # Convert results to documents with deduplication
-        documents = []
-        seen_ids = set()
-        for r in res.fetchall():
-            doc_id = r[2]
-            # Skip duplicate documents based on ID
-            if doc_id in seen_ids:
-                continue
-            seen_ids.add(doc_id)
-            documents.append(Document(
-                id=doc_id,
-                page_content=r[0],
-                metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
-            ))
-        return documents
+        return self._convert_results_to_documents(res, include_score=False)
 
     def similarity_search_with_score_by_vector(
         self,
@@ -1092,44 +947,9 @@ class OceanbaseVectorStore(VectorStore):
             return []
 
         search_param = param if param is not None else self._get_default_search_params()
+        self._handle_hnsw_ef_search(search_param)
+        search_table = self._determine_search_table()
 
-        # Handle HNSW-specific efSearch parameter
-        if self.index_type in ["HNSW", "HNSW_SQ"]:
-            ef_search = search_param.get(
-                "efSearch", self._get_default_search_params()["efSearch"]
-            )
-            if ef_search != self.hnsw_ef_search:
-                self.obvector.set_ob_hnsw_ef_search(ef_search)
-                self.hnsw_ef_search = ef_search
-
-        # Determine which table to search
-        # If hybrid search is enabled, prefer searching from tables with data
-        search_table = self.table_name
-        if self.include_fulltext and self.fulltext_table_name:
-            # Fulltext table contains dense vectors, use it for vector search
-            try:
-                with self.obvector.engine.connect() as conn:
-                    fulltext_count = conn.execute(
-                        text(f"SELECT COUNT(*) FROM `{self.fulltext_table_name}`")
-                    ).scalar()
-                    if fulltext_count > 0:
-                        search_table = self.fulltext_table_name
-            except Exception:
-                # If query fails, fall back to main table
-                pass
-        elif self.include_sparse and self.sparse_table_name:
-            # Sparse table also contains dense vectors, use it if fulltext table is empty
-            try:
-                with self.obvector.engine.connect() as conn:
-                    sparse_count = conn.execute(
-                        text(f"SELECT COUNT(*) FROM `{self.sparse_table_name}`")
-                    ).scalar()
-                    if sparse_count > 0:
-                        search_table = self.sparse_table_name
-            except Exception:
-                # If query fails, fall back to main table
-                pass
-        
         res = self.obvector.ann_search(
             table_name=search_table,
             vec_data=(embedding if not self.normalize else self._normalize(embedding)),
@@ -1145,24 +965,7 @@ class OceanbaseVectorStore(VectorStore):
             where_clause=([text(fltr)] if fltr is not None else None),
             **kwargs,
         )
-        # Convert results to documents with deduplication
-        results = []
-        seen_ids = set()
-        for r in res.fetchall():
-            doc_id = r[2]
-            # Skip duplicate documents based on ID
-            if doc_id in seen_ids:
-                continue
-            seen_ids.add(doc_id)
-            results.append((
-                Document(
-                    id=doc_id,
-                    page_content=r[0],
-                    metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
-                ),
-                r[3],
-            ))
-        return results
+        return self._convert_results_to_documents(res, include_score=True)
 
     def max_marginal_relevance_search(
         self,
@@ -1277,23 +1080,23 @@ class OceanbaseVectorStore(VectorStore):
         else:
             raise ValueError(f"Unsupported metric type: {metric_type}")
 
-    def _convert_results_to_documents(self, results):
+    def _convert_list_results_to_documents(self, results):
         """
-        Convert search results to Document objects.
+        Convert search results (list format) to Document objects.
+        Used for converting combined results from hybrid search.
         """
         documents = []
-        seen_ids = set()  # Track seen document IDs to avoid duplicates
         for result in results:
             doc_id = None
             page_content = ""
             metadata = {}
-            
+
             if isinstance(result, dict):
                 # Dictionary format: extract fields by name
                 doc_id = result.get(self.primary_field)
                 page_content = result.get(self.text_field, "")
                 metadata = result.get(self.metadata_field, {})
-                
+
                 # Ensure metadata is a dict, not a JSON string
                 if isinstance(metadata, str):
                     try:
@@ -1312,8 +1115,12 @@ class OceanbaseVectorStore(VectorStore):
                     page_content = str(result[0]) if result[0] is not None else ""
                     metadata_raw = result[1] if result[1] is not None else {}
                 else:
-                    page_content = str(result[0]) if len(result) > 0 and result[0] is not None else ""
-                
+                    page_content = (
+                        str(result[0])
+                        if len(result) > 0 and result[0] is not None
+                        else ""
+                    )
+
                 if metadata_raw is not None:
                     if isinstance(metadata_raw, str):
                         try:
@@ -1322,22 +1129,81 @@ class OceanbaseVectorStore(VectorStore):
                             metadata = {}
                     else:
                         metadata = metadata_raw or {}
-            
-            # Skip duplicate documents based on ID
-            if doc_id and doc_id in seen_ids:
-                continue
-            if doc_id:
-                seen_ids.add(doc_id)
-            
-            documents.append(Document(
-                id=doc_id,
-                page_content=page_content,
-                metadata=metadata
-            ))
-        
+
+            documents.append(
+                Document(id=doc_id, page_content=page_content, metadata=metadata)
+            )
+
         return documents
 
     # Hybrid Search Methods
+    def _add_documents_with_hybrid_field(
+        self,
+        documents: List[Document],
+        hybrid_data: List[Any],
+        table_name: str,
+        create_table_func: Callable,
+        field_name: str,
+        field_value_getter: Callable[[Any], Any],
+        ids: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        Internal helper method to add documents with hybrid search fields.
+
+        Args:
+            documents: List of documents to add
+            hybrid_data: List of hybrid field data (sparse embeddings or fulltext content)
+            table_name: Name of the table to upsert to
+            create_table_func: Function to create the table if it doesn't exist
+            field_name: Name of the hybrid field in the record
+            field_value_getter: Function to extract the field value from hybrid_data item
+            ids: Optional list of document IDs
+
+        Returns:
+            List of document IDs
+        """
+        # Generate dense embeddings to determine dimension
+        try:
+            sample_embedding = self.embedding_function.embed_query(
+                documents[0].page_content
+            )
+            embedding_dim = len(sample_embedding)
+        except Exception:
+            raise ValueError(
+                "Failed to generate embedding. Cannot determine embedding dimension."
+            )
+
+        # Create table if it doesn't exist
+        if not self.obvector.check_table_exists(table_name):
+            create_table_func(embedding_dim=embedding_dim)
+
+        # Generate IDs if not provided
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Prepare data for insertion
+        data = []
+        for i, (doc, hybrid_item) in enumerate(zip(documents, hybrid_data)):
+            # Generate dense embedding for the document
+            dense_embedding = self.embedding_function.embed_query(doc.page_content)
+
+            record = {
+                self.primary_field: ids[i],
+                self.text_field: doc.page_content,
+                self.vector_field: dense_embedding,
+                field_name: field_value_getter(hybrid_item),
+                self.metadata_field: doc.metadata,
+            }
+            data.append(record)
+
+        # Upsert data to table
+        self.obvector.upsert(
+            table_name=table_name,
+            data=data,
+            partition_name="",
+        )
+        return ids
+
     def add_sparse_documents(
         self,
         documents: List[Document],
@@ -1346,7 +1212,7 @@ class OceanbaseVectorStore(VectorStore):
     ) -> List[str]:
         """
         Add documents with sparse vector embeddings.
-        
+
         Note: This method uses upsert behavior. If documents with the same IDs already
         exist, they will be updated rather than creating duplicates. To add both sparse
         and fulltext fields to the same documents, use the same IDs for both calls, or
@@ -1361,16 +1227,16 @@ class OceanbaseVectorStore(VectorStore):
 
         Returns:
             List of document IDs
-            
+
         Raises:
             ValueError: If sparse vector support is not enabled
-            
+
         Example:
             .. code-block:: python
-            
+
                 # First add documents with fulltext
                 ids = store.add_documents_with_fulltext(documents, fulltext_content)
-                
+
                 # Then add sparse embeddings to the same documents (using same IDs)
                 store.add_sparse_documents(documents, sparse_embeddings, ids=ids)
                 # This will update existing records instead of creating duplicates
@@ -1380,50 +1246,22 @@ class OceanbaseVectorStore(VectorStore):
                 "Sparse vector support not enabled. Set include_sparse=True when "
                 "initializing."
             )
-            
+
         if len(documents) != len(sparse_embeddings):
             raise ValueError(
                 "Number of documents must match number of sparse embeddings"
             )
-        
-        # Generate dense embeddings to determine dimension
-        try:
-            sample_embedding = self.embedding_function.embed_query(documents[0].page_content)
-            embedding_dim = len(sample_embedding)
-        except Exception:
-            raise ValueError("Failed to generate embedding. Cannot determine embedding dimension.")
-        
-        # Create sparse table if it doesn't exist
-        if not self.obvector.check_table_exists(self.sparse_table_name):
-            self._create_sparse_table(embedding_dim=embedding_dim)
-            
-        # Generate IDs if not provided
-        if ids is None:
-            ids = [str(uuid.uuid4()) for _ in documents]
-            
-        # Prepare data for insertion
-        data = []
-        for i, (doc, sparse_emb) in enumerate(zip(documents, sparse_embeddings)):
-            # Generate dense embedding for the document
-            dense_embedding = self.embedding_function.embed_query(doc.page_content)
-            
-            record = {
-                self.primary_field: ids[i],
-                self.text_field: doc.page_content,
-                self.vector_field: dense_embedding,
-                self.sparse_vector_field: sparse_emb,
-                self.metadata_field: doc.metadata,
-            }
-            data.append(record)
-        
-        # Upsert data to sparse table (independent from fulltext table)
-        self.obvector.upsert(
+
+        return self._add_documents_with_hybrid_field(
+            documents=documents,
+            hybrid_data=sparse_embeddings,
             table_name=self.sparse_table_name,
-            data=data,
-            partition_name="",
+            create_table_func=self._create_sparse_table,
+            field_name=self.sparse_vector_field,
+            field_value_getter=lambda x: x,
+            ids=ids,
         )
-        return ids
-    
+
     def add_documents_with_fulltext(
         self,
         documents: List[Document],
@@ -1432,31 +1270,31 @@ class OceanbaseVectorStore(VectorStore):
     ) -> List[str]:
         """
         Add documents with full-text content for full-text search.
-        
+
         Note: This method uses upsert behavior. If documents with the same IDs already
         exist, they will be updated rather than creating duplicates. To add both sparse
         and fulltext fields to the same documents, use the same IDs for both calls, or
         use `add_documents_with_hybrid_fields` to add both in a single call.
-        
+
         Args:
             documents: List of documents to add
             fulltext_content: List of full-text content strings
             ids: Optional list of document IDs. If not provided, will be generated.
                  If provided and documents with these IDs already exist, they will be
                  updated (upsert behavior).
-            
+
         Returns:
             List of document IDs
-            
+
         Raises:
             ValueError: If full-text search support is not enabled
-            
+
         Example:
             .. code-block:: python
-            
+
                 # First add documents with sparse embeddings
                 ids = store.add_sparse_documents(documents, sparse_embeddings)
-                
+
                 # Then add fulltext to the same documents (using same IDs)
                 store.add_documents_with_fulltext(documents, fulltext_content, ids=ids)
                 # This will update existing records instead of creating duplicates
@@ -1466,59 +1304,29 @@ class OceanbaseVectorStore(VectorStore):
                 "Full-text search support not enabled. Set include_fulltext=True "
                 "when initializing."
             )
-        
+
         if len(documents) != len(fulltext_content):
             raise ValueError(
                 "Number of documents must match number of fulltext content items"
             )
-        
+
         # Fulltext requires sparse support
         if not self.include_sparse:
             raise ValueError(
                 "Full-text search requires sparse vector support. "
                 "Set include_sparse=True when include_fulltext=True."
             )
-        
-        # Generate dense embeddings to determine dimension
-        try:
-            sample_embedding = self.embedding_function.embed_query(documents[0].page_content)
-            embedding_dim = len(sample_embedding)
-        except Exception:
-            raise ValueError("Failed to generate embedding. Cannot determine embedding dimension.")
-        
-        # Create sparse_fulltext table if it doesn't exist
-        if not self.obvector.check_table_exists(self.fulltext_table_name):
-            self._create_sparse_fulltext_table(embedding_dim=embedding_dim)
-        
-        # Generate IDs if not provided
-        if ids is None:
-            ids = [str(uuid.uuid4()) for _ in documents]
-        
-        # Prepare data for insertion
-        data = []
-        for i, (doc, fulltext) in enumerate(zip(documents, fulltext_content)):
-            # Generate dense embedding for the document
-            dense_embedding = self.embedding_function.embed_query(doc.page_content)
-            
-            record = {
-                self.primary_field: ids[i],
-                self.text_field: doc.page_content,
-                self.vector_field: dense_embedding,
-                self.fulltext_field: fulltext,
-                self.metadata_field: doc.metadata,
-            }
-            # Note: sparse_vector_field is optional in sparse_fulltext table
-            # Users can add sparse embeddings separately if needed
-            data.append(record)
-        
-        # Upsert data to sparse_fulltext table (independent from sparse table)
-        self.obvector.upsert(
+
+        return self._add_documents_with_hybrid_field(
+            documents=documents,
+            hybrid_data=fulltext_content,
             table_name=self.fulltext_table_name,
-            data=data,
-            partition_name="",
+            create_table_func=self._create_sparse_fulltext_table,
+            field_name=self.fulltext_field,
+            field_value_getter=lambda x: x,
+            ids=ids,
         )
-        return ids
-    
+
     def add_documents_with_hybrid_fields(
         self,
         documents: List[Document],
@@ -1530,7 +1338,7 @@ class OceanbaseVectorStore(VectorStore):
         Add documents with optional sparse vectors and/or full-text content.
         This method allows adding all hybrid search fields in a single call,
         avoiding duplicate records when adding sparse and fulltext separately.
-        
+
         Args:
             documents: List of documents to add
             sparse_embeddings: Optional list of sparse vector embeddings (dict of index: value)
@@ -1538,16 +1346,16 @@ class OceanbaseVectorStore(VectorStore):
             ids: Optional list of document IDs. If provided, must match documents length.
                  If not provided, will be generated. If documents already exist with these IDs,
                  they will be updated (upsert behavior).
-            
+
         Returns:
             List of document IDs
-            
+
         Raises:
             ValueError: If required features are not enabled or input validation fails
-            
+
         Example:
             .. code-block:: python
-            
+
                 # Add documents with both sparse and fulltext in one call
                 ids = hybrid_store.add_documents_with_hybrid_fields(
                     documents=docs,
@@ -1559,60 +1367,58 @@ class OceanbaseVectorStore(VectorStore):
         if sparse_embeddings is None and fulltext_content is None:
             # If neither sparse nor fulltext provided, use standard add_documents
             return self.add_documents(documents, ids=ids)
-        
+
         if sparse_embeddings is not None and not self.include_sparse:
             raise ValueError(
                 "Sparse vector support not enabled. Set include_sparse=True when "
                 "initializing."
             )
-        
+
         if fulltext_content is not None and not self.include_fulltext:
             raise ValueError(
                 "Full-text search support not enabled. Set include_fulltext=True "
                 "when initializing."
             )
-        
+
         if sparse_embeddings is not None and len(documents) != len(sparse_embeddings):
             raise ValueError(
                 "Number of documents must match number of sparse embeddings"
             )
-        
+
         if fulltext_content is not None and len(documents) != len(fulltext_content):
             raise ValueError(
                 "Number of documents must match number of fulltext content items"
             )
-        
+
         # Generate IDs if not provided
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in documents]
         elif len(ids) != len(documents):
-            raise ValueError(
-                "Number of IDs must match number of documents"
-            )
-        
+            raise ValueError("Number of IDs must match number of documents")
+
         # Prepare data for upsert
         data = []
         for i, doc in enumerate(documents):
             # Generate dense embedding for the document
             dense_embedding = self.embedding_function.embed_query(doc.page_content)
-            
+
             record = {
                 self.primary_field: ids[i],
                 self.text_field: doc.page_content,
                 self.vector_field: dense_embedding,
                 self.metadata_field: doc.metadata,
             }
-            
+
             # Add sparse vector if provided
             if sparse_embeddings is not None:
                 record[self.sparse_vector_field] = sparse_embeddings[i]
-            
+
             # Add fulltext if provided
             if fulltext_content is not None:
                 record[self.fulltext_field] = fulltext_content[i]
-            
+
             data.append(record)
-        
+
         # Upsert data using ObVecClient (upsert updates existing records with same ID)
         self.obvector.upsert(
             table_name=self.table_name,
@@ -1637,7 +1443,7 @@ class OceanbaseVectorStore(VectorStore):
 
         Returns:
             List of similar documents
-            
+
         Raises:
             ValueError: If sparse vector support is not enabled
         """
@@ -1646,10 +1452,31 @@ class OceanbaseVectorStore(VectorStore):
                 "Sparse vector support not enabled. Set include_sparse=True when "
                 "initializing."
             )
-        
-        # Perform sparse vector search using ann_search on sparse table
+
+        # Determine which table to search
+        # If hybrid fields were added to main table, search from main table
+        # Otherwise, search from sparse table
+        search_table = self.table_name
+        if self.sparse_table_name and self.obvector.check_table_exists(
+            self.sparse_table_name
+        ):
+            # Check if sparse table has data, prefer sparse table for sparse-only search
+            try:
+                with self.obvector.engine.connect() as conn:
+                    from sqlalchemy import text
+
+                    sparse_count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM `{self.sparse_table_name}`")
+                    ).scalar()
+                    if sparse_count > 0:
+                        search_table = self.sparse_table_name
+            except Exception:
+                # If query fails, fall back to main table
+                pass
+
+        # Perform sparse vector search using ann_search
         res = self.obvector.ann_search(
-            table_name=self.sparse_table_name,
+            table_name=search_table,
             vec_data=sparse_query,
             vec_column_name=self.sparse_vector_field,
             distance_func=inner_product,
@@ -1661,41 +1488,18 @@ class OceanbaseVectorStore(VectorStore):
             ],
             where_clause=filter,
         )
-        
-        # Convert results to documents with deduplication
-        documents = []
-        seen_ids = set()
-        for r in res.fetchall():
-            doc_id = r[2]
-            # Skip duplicate documents based on ID
-            if doc_id in seen_ids:
-                continue
-            seen_ids.add(doc_id)
-            documents.append(Document(
-                id=doc_id,
-                page_content=r[0],
-                metadata=(
-                    json.loads(r[1])
-                    if isinstance(r[1], str) or isinstance(r[1], bytes)
-                    else r[1]
-                ),
-            ))
-        return documents
-    
-    def _combine_hybrid_results(
-        self, 
-        vector_results, 
-        fulltext_results, 
-        k: int
-    ) -> List:
+
+        return self._convert_results_to_documents(res, include_score=False)
+
+    def _combine_hybrid_results(self, vector_results, fulltext_results, k: int) -> List:
         """
         Combine and rank results from vector and full-text search.
-        
+
         Args:
             vector_results: Results from vector similarity search (CursorResult)
             fulltext_results: Results from full-text search (CursorResult)
             k: Number of final results to return
-            
+
         Returns:
             Combined and ranked results
         """
@@ -1703,26 +1507,26 @@ class OceanbaseVectorStore(VectorStore):
         vector_list = []
         if vector_results:
             for row in vector_results:
-                if hasattr(row, '_asdict'):
+                if hasattr(row, "_asdict"):
                     vector_list.append(row._asdict())
-                elif hasattr(row, '_mapping'):
+                elif hasattr(row, "_mapping"):
                     vector_list.append(dict(row._mapping))
                 else:
                     vector_list.append(row)
-        
+
         fulltext_list = []
         if fulltext_results:
             for row in fulltext_results:
-                if hasattr(row, '_asdict'):
+                if hasattr(row, "_asdict"):
                     fulltext_list.append(row._asdict())
-                elif hasattr(row, '_mapping'):
+                elif hasattr(row, "_mapping"):
                     fulltext_list.append(dict(row._mapping))
                 else:
                     fulltext_list.append(row)
-        
+
         # Create a dictionary to store combined scores
         combined_scores = {}
-        
+
         # Process vector results (higher weight for semantic similarity)
         for i, result in enumerate(vector_list):
             if isinstance(result, dict):
@@ -1735,7 +1539,7 @@ class OceanbaseVectorStore(VectorStore):
             combined_scores[doc_id] = (
                 combined_scores.get(doc_id, 0) + vector_score * 0.7
             )
-        
+
         # Process full-text results (lower weight for keyword matching)
         for i, result in enumerate(fulltext_list):
             if isinstance(result, dict):
@@ -1748,12 +1552,12 @@ class OceanbaseVectorStore(VectorStore):
             combined_scores[doc_id] = (
                 combined_scores.get(doc_id, 0) + fulltext_score * 0.3
             )
-        
+
         # Sort by combined score and get top k
-        sorted_docs = sorted(
-            combined_scores.items(), key=lambda x: x[1], reverse=True
-        )[:k]
-        
+        sorted_docs = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[
+            :k
+        ]
+
         # Create a mapping from doc_id to result for quick lookup
         # Prefer vector results over fulltext results when both exist
         id_to_result = {}
@@ -1774,7 +1578,7 @@ class OceanbaseVectorStore(VectorStore):
                 result_id = result[2] if len(result) > 2 else result[0]
             if result_id not in id_to_result:
                 id_to_result[result_id] = result
-        
+
         # Return results in the same format as input, ensuring no duplicates
         final_results = []
         seen_ids = set()
@@ -1782,55 +1586,55 @@ class OceanbaseVectorStore(VectorStore):
             if doc_id not in seen_ids and doc_id in id_to_result:
                 final_results.append(id_to_result[doc_id])
                 seen_ids.add(doc_id)
-        
+
         return final_results
-    
+
     def _combine_multi_modal_results(
-        self, 
-        all_results: List[tuple], 
+        self,
+        all_results: List[tuple],
         k: int,
-        modality_weights: Optional[Dict[str, float]] = None
+        modality_weights: Optional[Dict[str, float]] = None,
     ) -> List:
         """
         Combine and rank results from multiple search modalities.
-        
+
         Args:
             all_results: List of (modality_type, results) tuples
             k: Number of final results to return
             modality_weights: Optional dictionary specifying weights for each modality
-            
+
         Returns:
             Combined and ranked results
         """
         # Use provided weights or default weights
         if modality_weights is None:
             modality_weights = {
-                'vector': 0.5,      # Semantic similarity
-                'sparse': 0.3,      # Keyword matching
-                'fulltext': 0.2     # Text search
+                "vector": 0.5,  # Semantic similarity
+                "sparse": 0.3,  # Keyword matching
+                "fulltext": 0.2,  # Text search
             }
-        
+
         combined_scores = {}
         all_converted_results = {}  # Store converted results by modality
-        
+
         # Process results from each modality
         for modality_type, results in all_results:
             weight = modality_weights.get(modality_type, 0.1)
-            
+
             # Convert CursorResult to list if needed
             results_list = []
             if results:
                 for row in results:
-                    if hasattr(row, '_asdict'):
+                    if hasattr(row, "_asdict"):
                         results_list.append(row._asdict())
-                    elif hasattr(row, '_mapping'):
+                    elif hasattr(row, "_mapping"):
                         results_list.append(dict(row._mapping))
                     else:
                         results_list.append(row)
-            
+
             # Store converted results for later use
             all_converted_results[modality_type] = results_list
-            
+
             for i, result in enumerate(results_list):
                 if isinstance(result, dict):
                     doc_id = result.get(self.primary_field)
@@ -1842,16 +1646,16 @@ class OceanbaseVectorStore(VectorStore):
                 combined_scores[doc_id] = (
                     combined_scores.get(doc_id, 0) + normalized_score * weight
                 )
-        
+
         # Sort by combined score and get top k
-        sorted_docs = sorted(
-            combined_scores.items(), key=lambda x: x[1], reverse=True
-        )[:k]
-        
+        sorted_docs = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[
+            :k
+        ]
+
         # Create a mapping from doc_id to result for quick lookup
         # Prefer results from modalities in order: vector > sparse > fulltext
         id_to_result = {}
-        modality_priority = ['vector', 'sparse', 'fulltext']
+        modality_priority = ["vector", "sparse", "fulltext"]
         for modality_type in modality_priority:
             if modality_type in all_converted_results:
                 for result in all_converted_results[modality_type]:
@@ -1862,7 +1666,7 @@ class OceanbaseVectorStore(VectorStore):
                         result_id = result[2] if len(result) > 2 else result[0]
                     if result_id not in id_to_result:
                         id_to_result[result_id] = result
-        
+
         # Return results in the same format as input, ensuring no duplicates
         final_results = []
         seen_ids = set()
@@ -1870,7 +1674,7 @@ class OceanbaseVectorStore(VectorStore):
             if doc_id not in seen_ids and doc_id in id_to_result:
                 final_results.append(id_to_result[doc_id])
                 seen_ids.add(doc_id)
-        
+
         return final_results
 
     def similarity_search_with_fulltext(
@@ -1882,7 +1686,7 @@ class OceanbaseVectorStore(VectorStore):
     ) -> List[Document]:
         """
         Perform hybrid search combining vector similarity and full-text search.
-        
+
         This method performs a true hybrid search by:
         1. Using vector similarity search for semantic matching
         2. Using full-text search for keyword matching
@@ -1896,7 +1700,7 @@ class OceanbaseVectorStore(VectorStore):
 
         Returns:
             List of similar documents ranked by hybrid score
-            
+
         Raises:
             ValueError: If full-text search support is not enabled
         """
@@ -1905,28 +1709,49 @@ class OceanbaseVectorStore(VectorStore):
                 "Full-text search support not enabled. Set include_fulltext=True "
                 "when initializing."
             )
-        
+
         # Fulltext requires sparse support
         if not self.include_sparse:
             raise ValueError(
                 "Full-text search requires sparse vector support. "
                 "Set include_sparse=True when include_fulltext=True."
             )
-        
-        # Step 1: Vector similarity search on sparse_fulltext table
+
+        # Determine which table to search
+        # If hybrid fields were added to main table, search from main table
+        # Otherwise, search from fulltext table
+        search_table = self.table_name
+        if self.fulltext_table_name and self.obvector.check_table_exists(
+            self.fulltext_table_name
+        ):
+            # Check if fulltext table has data, prefer fulltext table for fulltext search
+            try:
+                with self.obvector.engine.connect() as conn:
+                    from sqlalchemy import text
+
+                    fulltext_count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM `{self.fulltext_table_name}`")
+                    ).scalar()
+                    if fulltext_count > 0:
+                        search_table = self.fulltext_table_name
+            except Exception:
+                # If query fails, fall back to main table
+                pass
+
+        # Step 1: Vector similarity search
         query_embedding = self.embedding_function.embed_query(query)
         vector_results = self.obvector.ann_search(
-            table_name=self.fulltext_table_name,
+            table_name=search_table,
             vec_data=query_embedding,
             vec_column_name=self.vector_field,
             distance_func=self._get_distance_function(self.vidx_metric_type),
             topk=k * 2,  # Get more results for better ranking
             where_clause=filter,
         )
-        
-        # Step 2: Full-text search using post_ann_search with str_list on sparse_fulltext table
+
+        # Step 2: Full-text search using post_ann_search with str_list
         fulltext_results = self.obvector.post_ann_search(
-            table_name=self.fulltext_table_name,
+            table_name=search_table,
             vec_data=query_embedding,
             vec_column_name=self.vector_field,
             distance_func=self._get_distance_function(self.vidx_metric_type),
@@ -1934,13 +1759,13 @@ class OceanbaseVectorStore(VectorStore):
             str_list=[fulltext_query],  # Use str_list for full-text search
             where_clause=filter,
         )
-        
+
         # Step 3: Combine and rank results
         combined_results = self._combine_hybrid_results(
             vector_results, fulltext_results, k
         )
-        
-        return self._convert_results_to_documents(combined_results)
+
+        return self._convert_list_results_to_documents(combined_results)
 
     def advanced_hybrid_search(
         self,
@@ -1965,33 +1790,29 @@ class OceanbaseVectorStore(VectorStore):
 
         Returns:
             List of similar documents
-            
+
         Raises:
             ValueError: If no search modality is provided, required features are
                 not enabled, or weights don't sum to 1.0
         """
         if not any([vector_query, sparse_query, fulltext_query]):
             raise ValueError("At least one search modality must be provided")
-            
+
         if sparse_query and not self.include_sparse:
             raise ValueError(
                 "Sparse vector support not enabled. Set include_sparse=True when "
                 "initializing."
             )
-        
+
         if fulltext_query and not self.include_fulltext:
             raise ValueError(
                 "Full-text search support not enabled. Set include_fulltext=True "
                 "when initializing."
             )
-        
+
         # Validate and set up modality weights
-        default_weights = {
-            'vector': 0.5,
-            'sparse': 0.3,
-            'fulltext': 0.2
-        }
-        
+        default_weights = {"vector": 0.5, "sparse": 0.3, "fulltext": 0.2}
+
         if modality_weights is None:
             modality_weights = default_weights
         else:
@@ -2001,15 +1822,15 @@ class OceanbaseVectorStore(VectorStore):
                 raise ValueError(
                     f"Modality weights must sum to 1.0, got {total_weight}"
                 )
-            
+
             # Ensure all required keys are present
             for key in default_weights.keys():
                 if key not in modality_weights:
                     modality_weights[key] = 0.0
-        
+
         # Collect results from all available modalities
         all_results = []
-        
+
         # Vector similarity search
         if vector_query:
             query_embedding = self.embedding_function.embed_query(vector_query)
@@ -2020,12 +1841,14 @@ class OceanbaseVectorStore(VectorStore):
                 distance_func=self._get_distance_function(self.vidx_metric_type),
                 topk=k * 2,
             )
-            all_results.append(('vector', vector_results))
-        
+            all_results.append(("vector", vector_results))
+
         # Sparse vector search (on sparse table)
         if sparse_query:
             # Check if sparse table exists before searching
-            if self.sparse_table_name and self.obvector.check_table_exists(self.sparse_table_name):
+            if self.sparse_table_name and self.obvector.check_table_exists(
+                self.sparse_table_name
+            ):
                 sparse_results = self.obvector.ann_search(
                     table_name=self.sparse_table_name,
                     vec_data=sparse_query,
@@ -2033,20 +1856,22 @@ class OceanbaseVectorStore(VectorStore):
                     distance_func=inner_product,
                     topk=k * 2,
                 )
-                all_results.append(('sparse', sparse_results))
+                all_results.append(("sparse", sparse_results))
             # If table doesn't exist, skip sparse search (table may not have been created yet)
-        
+
         # Full-text search (on sparse_fulltext table)
         if fulltext_query:
             # Check if fulltext table exists before searching
-            if self.fulltext_table_name and self.obvector.check_table_exists(self.fulltext_table_name):
+            if self.fulltext_table_name and self.obvector.check_table_exists(
+                self.fulltext_table_name
+            ):
                 if vector_query:
                     # Use the same embedding for consistency
                     query_embedding = self.embedding_function.embed_query(vector_query)
                 else:
                     # Create a dummy embedding for full-text only search
                     query_embedding = [0.0] * 6
-                
+
                 fulltext_results = self.obvector.post_ann_search(
                     table_name=self.fulltext_table_name,
                     vec_data=query_embedding,
@@ -2055,9 +1880,9 @@ class OceanbaseVectorStore(VectorStore):
                     topk=k * 2,
                     str_list=[fulltext_query],
                 )
-                all_results.append(('fulltext', fulltext_results))
+                all_results.append(("fulltext", fulltext_results))
             # If table doesn't exist, skip fulltext search (table may not have been created yet)
-        
+
         # Combine results from all modalities
         if len(all_results) == 1:
             # Single modality, return as is
@@ -2068,19 +1893,19 @@ class OceanbaseVectorStore(VectorStore):
                 for i, row in enumerate(single_results):
                     if i >= k:
                         break
-                    if hasattr(row, '_asdict'):
+                    if hasattr(row, "_asdict"):
                         results_list.append(row._asdict())
-                    elif hasattr(row, '_mapping'):
+                    elif hasattr(row, "_mapping"):
                         results_list.append(dict(row._mapping))
                     else:
                         results_list.append(row)
-            return self._convert_results_to_documents(results_list)
+            return self._convert_list_results_to_documents(results_list)
         else:
             # Multiple modalities, combine and rank
             combined_results = self._combine_multi_modal_results(
                 all_results, k, modality_weights
             )
-            return self._convert_results_to_documents(combined_results)
+            return self._convert_list_results_to_documents(combined_results)
 
     def similarity_search_with_advanced_filters(
         self,
@@ -2102,23 +1927,23 @@ class OceanbaseVectorStore(VectorStore):
         """
         # Perform advanced filtering with multiple search modalities
         query_embedding = self.embedding_function.embed_query(query)
-        
+
         # Extract different types of filters
         where_clause = None
         fulltext_query = None
         # scalar_filters = []  # Currently not used in implementation
-        
-        if 'metadata' in filters:
-            where_clause = filters['metadata']
-        if 'fulltext' in filters:
-            fulltext_query = filters['fulltext']
+
+        if "metadata" in filters:
+            where_clause = filters["metadata"]
+        if "fulltext" in filters:
+            fulltext_query = filters["fulltext"]
         # Extract scalar filters if present (currently not used in implementation)
         # if 'scalar' in filters:
         #     scalar_filters = filters['scalar']
-        
+
         # Collect results from different search modalities
         all_results = []
-        
+
         # Vector similarity search with metadata filtering
         vector_results = self.obvector.ann_search(
             table_name=self.table_name,
@@ -2128,8 +1953,8 @@ class OceanbaseVectorStore(VectorStore):
             topk=k * 2,
             where_clause=where_clause,
         )
-        all_results.append(('vector', vector_results))
-        
+        all_results.append(("vector", vector_results))
+
         # Full-text search if specified (on sparse_fulltext table)
         if fulltext_query and self.include_fulltext:
             fulltext_results = self.obvector.post_ann_search(
@@ -2141,11 +1966,24 @@ class OceanbaseVectorStore(VectorStore):
                 str_list=[fulltext_query],
                 where_clause=where_clause,
             )
-            all_results.append(('fulltext', fulltext_results))
-        
+            all_results.append(("fulltext", fulltext_results))
+
         # Combine results if multiple modalities
         if len(all_results) == 1:
-            return self._convert_results_to_documents(all_results[0][1][:k])
+            # Single modality, convert CursorResult to list
+            single_results = all_results[0][1]
+            results_list = []
+            if single_results:
+                for i, row in enumerate(single_results):
+                    if i >= k:
+                        break
+                    if hasattr(row, "_asdict"):
+                        results_list.append(row._asdict())
+                    elif hasattr(row, "_mapping"):
+                        results_list.append(dict(row._mapping))
+                    else:
+                        results_list.append(row)
+            return self._convert_list_results_to_documents(results_list)
         else:
             combined_results = self._combine_multi_modal_results(all_results, k)
-            return self._convert_results_to_documents(combined_results)
+            return self._convert_list_results_to_documents(combined_results)
