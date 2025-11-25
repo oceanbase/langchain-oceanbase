@@ -73,7 +73,7 @@ connection_args = {
 }
 
 embeddings = DashScopeEmbeddings(
-    model="text-embedding-v1", dashscope_api_key=DASHSCOPE_API
+    model="your-embedding-model", dashscope_api_key=DASHSCOPE_API
 )
 
 vector_store = OceanbaseVectorStore(
