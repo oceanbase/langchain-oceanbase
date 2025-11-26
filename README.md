@@ -44,6 +44,12 @@ We recommend using Docker to deploy OceanBase:
 docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 -d oceanbase/oceanbase-ce:latest
 ```
 
+For AI Functions support, use OceanBase 4.4.1 or later:
+
+```shell
+docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 -d oceanbase/oceanbase-ce:4.4.1.0-100000032025101610
+```
+
 [More methods to deploy OceanBase cluster](https://github.com/oceanbase/oceanbase-doc/blob/V4.3.1/en-US/400.deploy/500.deploy-oceanbase-database-community-edition/100.deployment-overview.md)
 
 ## Usage
@@ -59,6 +65,8 @@ Choose your preferred format:
 
 - **[Hybrid Search Guide](./docs/hybrid_search.ipynb)** - Interactive notebook for hybrid search features
 - **[Hybrid Search Guide (Markdown)](./docs/hybrid_search.md)** - Static documentation for hybrid search
+- **[AI Functions Guide](./docs/ai_functions.md)** - Documentation for AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)
+- **[AI Functions Guide (Notebook)](./docs/ai_functions.ipynb)** - Interactive notebook for AI Functions
 
 #### Hybrid Search Sections:
 - [**Setup**](./docs/hybrid_search.md#setup) - Deploy OceanBase and install packages
@@ -66,6 +74,14 @@ Choose your preferred format:
 - [**Sparse Vector Search**](./docs/hybrid_search.md#sparse-vector-search) - Keyword-based exact matching
 - [**Full-text Search**](./docs/hybrid_search.md#full-text-search) - Content-based text search
 - [**Multi-modal Search**](./docs/hybrid_search.md#multi-modal-search) - Combined search strategies
+
+#### AI Functions Sections:
+- [**Setup**](./docs/ai_functions.md#setup) - Deploy OceanBase and configure AI models
+- [**Initialization**](./docs/ai_functions.md#initialization) - Configure and create AI functions client
+- [**AI_EMBED**](./docs/ai_functions.md#ai_embed) - Convert text to vector embeddings
+- [**AI_COMPLETE**](./docs/ai_functions.md#ai_complete) - Generate text completions
+- [**AI_RERANK**](./docs/ai_functions.md#ai_rerank) - Rerank search results
+- [**Model Configuration API**](./docs/ai_functions.md#model-configuration-api) - Setup AI models and endpoints
 
 ### Quick Start
 

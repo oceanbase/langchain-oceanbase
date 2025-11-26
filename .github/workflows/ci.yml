@@ -98,16 +98,16 @@ jobs:
         run: |
           poetry install --with lint,typing,test,test_integration --no-interaction
 
-      - name: Start OceanBase 4.3.5 container
+      - name: Start OceanBase container
         run: |
           set -e
-          export tag="4.3.5"
+          export tag="latest"
           echo "Starting OceanBase container with tag ${tag}"
           docker run -id --name "langchain_oceanbase_test" \
             -e MODE=mini \
             -e OB_SERVER_IP=127.0.0.1 \
             -p 2881:2881 \
-            oceanbase/oceanbase-ce:4.3.5-lts
+            oceanbase/oceanbase-ce:${tag}
           echo "OceanBase container started"
 
       - name: Wait for OceanBase to be ready
