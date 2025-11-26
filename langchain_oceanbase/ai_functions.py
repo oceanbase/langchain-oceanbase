@@ -1002,7 +1002,7 @@ class OceanBaseAIFunctions:
     def list_ai_models(self) -> List[Dict[str, Any]]:
         """List all AI models configured in OceanBase.
 
-        This method queries the oceanbase.__all_ai_model system table
+        This method queries the oceanbase.DBA_OB_AI_MODELS view
         to retrieve all configured AI models.
 
         Returns:
@@ -1022,7 +1022,7 @@ class OceanBaseAIFunctions:
         """
         try:
             with self.obvector.engine.connect() as conn:
-                sql_str = "SELECT * FROM oceanbase.__all_ai_model"
+                sql_str = "SELECT * FROM oceanbase.DBA_OB_AI_MODELS"
                 result = conn.execute(text(sql_str))
 
                 # Get column names
@@ -1053,7 +1053,7 @@ class OceanBaseAIFunctions:
     def list_ai_model_endpoints(self) -> List[Dict[str, Any]]:
         """List all AI model endpoints configured in OceanBase.
 
-        This method queries the oceanbase.__all_ai_model_endpoint system table
+        This method queries the oceanbase.DBA_OB_AI_MODEL_ENDPOINTS view
         to retrieve all configured AI model endpoints.
 
         Returns:
@@ -1075,14 +1075,8 @@ class OceanBaseAIFunctions:
         """
         try:
             with self.obvector.engine.connect() as conn:
-                # Try DBA_OB_AI_MODEL_ENDPOINTS view first, fallback to __all_virtual_ai_model_endpoint
-                try:
-                    sql_str = "SELECT * FROM oceanbase.DBA_OB_AI_MODEL_ENDPOINTS"
-                    result = conn.execute(text(sql_str))
-                except Exception:
-                    # Fallback to virtual table
-                    sql_str = "SELECT * FROM oceanbase.__all_virtual_ai_model_endpoint"
-                    result = conn.execute(text(sql_str))
+                sql_str = "SELECT * FROM oceanbase.DBA_OB_AI_MODEL_ENDPOINTS"
+                result = conn.execute(text(sql_str))
 
                 # Get column names
                 columns = result.keys()
