@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from langchain_core.messages import (
     AIMessage,
@@ -17,11 +19,11 @@ class TestOceanBaseChatMessageHistoryIntegration:
     def chat_history(self):
         """Create a chat history instance for integration tests"""
         connection_args = {
-            "host": "127.0.0.1",
-            "port": "2881",
-            "user": "root@test",
-            "password": "",
-            "db_name": "test",
+            "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
+            "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
+            "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
+            "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
+            "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
         }
 
         history = OceanBaseChatMessageHistory(
