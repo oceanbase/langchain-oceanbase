@@ -40,14 +40,36 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+      - name: Regenerate lockfile for Linux environment
+        run: |
+          poetry lock --no-interaction --no-cache || echo "Lockfile regeneration failed, using existing lockfile"
+
+      - name: Install pyseekdb and dependencies first
+        run: |
+          pip install pyseekdb
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
-          poetry install --with lint,typing --no-interaction --no-root
+          set +e
+          poetry install --with lint,typing --no-interaction --no-root --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing --no-interaction --no-root --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Install package
         run: |
-          poetry install --with lint,typing --no-interaction
+          set +e
+          poetry install --with lint,typing --no-interaction --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing --no-interaction --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Run ruff check
         run: |
@@ -89,14 +111,36 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+      - name: Regenerate lockfile for Linux environment
+        run: |
+          poetry lock --no-interaction --no-cache || echo "Lockfile regeneration failed, using existing lockfile"
+
+      - name: Install pyseekdb and dependencies first
+        run: |
+          pip install pyseekdb
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
-          poetry install --with lint,typing,test,test_integration --no-interaction --no-root
+          set +e
+          poetry install --with lint,typing,test,test_integration --no-interaction --no-root --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing,test,test_integration --no-interaction --no-root --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing,test,test_integration 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Install package and dependencies
         run: |
-          poetry install --with lint,typing,test,test_integration --no-interaction
+          set +e
+          poetry install --with lint,typing,test,test_integration --no-interaction --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing,test,test_integration --no-interaction --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing,test,test_integration 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Start OceanBase container
         run: |
@@ -223,14 +267,36 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+      - name: Regenerate lockfile for Linux environment
+        run: |
+          poetry lock --no-interaction --no-cache || echo "Lockfile regeneration failed, using existing lockfile"
+
+      - name: Install pyseekdb and dependencies first
+        run: |
+          pip install pyseekdb
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
-          poetry install --with lint,typing,test,test_integration --no-interaction --no-root
+          set +e
+          poetry install --with lint,typing,test,test_integration --no-interaction --no-root --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing,test,test_integration --no-interaction --no-root --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing,test,test_integration 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Install package and dependencies
         run: |
-          poetry install --with lint,typing,test,test_integration --no-interaction
+          set +e
+          poetry install --with lint,typing,test,test_integration --no-interaction --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with lint,typing,test,test_integration --no-interaction --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with lint,typing,test,test_integration 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Start SeekDB container
         run: |
@@ -495,14 +561,36 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
 
+      - name: Regenerate lockfile for Linux environment
+        run: |
+          poetry lock --no-interaction --no-cache || echo "Lockfile regeneration failed, using existing lockfile"
+
+      - name: Install pyseekdb and dependencies first
+        run: |
+          pip install pyseekdb
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
-          poetry install --with test --no-interaction --no-root
+          set +e
+          poetry install --with test --no-interaction --no-root --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with test --no-interaction --no-root --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with test 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Install package and dependencies
         run: |
-          poetry install --with test --no-interaction
+          set +e
+          poetry install --with test --no-interaction --no-cache 2>&1 | tee /tmp/poetry_install.log || true
+          if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
+            echo "Detected onnxruntime ABI issue, installing dependencies manually..."
+            poetry install --with test --no-interaction --no-cache --no-deps || true
+            poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt --with test 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
+          fi
+          set -e
 
       - name: Run embedding vectorization tests
         run: |

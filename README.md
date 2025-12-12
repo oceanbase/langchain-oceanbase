@@ -39,7 +39,7 @@ pip install -U langchain-oceanbase
 
 ### Requirements
 
-- Python >=3.10
+- Python >=3.11
 - langchain-core >=1.0.0
 - pyobvector >=0.2.0 (required for database client)
 - pyseekdb >=0.1.0 (optional, for built-in embedding functionality)
