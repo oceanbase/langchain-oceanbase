@@ -1,19 +1,35 @@
 from importlib import metadata
 
-from langchain_oceanbase.ai_functions import OceanBaseAIFunctions
-from langchain_oceanbase.chat_message_histories import OceanBaseChatMessageHistory
-from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+try:
+    from langchain_oceanbase.ai_functions import OceanBaseAIFunctions
+except ImportError:
+    OceanBaseAIFunctions = None  # type: ignore
+
+try:
+    from langchain_oceanbase.chat_message_histories import OceanBaseChatMessageHistory
+except ImportError:
+    OceanBaseChatMessageHistory = None  # type: ignore
+
+try:
+    from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunction
+except ImportError:
+    DefaultEmbeddingFunction = None  # type: ignore
+
+try:
+    from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+except ImportError:
+    OceanbaseVectorStore = None  # type: ignore
 
 try:
     __version__ = metadata.version(__package__)
 except metadata.PackageNotFoundError:
-    # Case where package metadata is not available.
     __version__ = ""
-del metadata  # optional, avoids polluting the results of dir(__package__)
+del metadata
 
 __all__ = [
     "OceanbaseVectorStore",
     "OceanBaseChatMessageHistory",
     "OceanBaseAIFunctions",
+    "DefaultEmbeddingFunction",
     "__version__",
 ]
