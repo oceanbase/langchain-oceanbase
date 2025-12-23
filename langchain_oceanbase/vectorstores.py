@@ -26,6 +26,8 @@ from pyobvector.client.index_param import VecIndexType
 from sqlalchemy import JSON, Column, String, Table, func, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_OCEANBASE_CONNECTION = {
@@ -128,8 +130,10 @@ class OceanbaseVectorStore(VectorStore):
             Dimension of vectors. If not specified, will be inferred from the first embedding vector.
 
     Key init args — client params:
-        embedding_function: Embeddings
+        embedding_function: Optional[Embeddings]
             Function used to embed the text.
+            If None, will automatically use DefaultEmbeddingFunctionAdapter
+            (all-MiniLM-L6-v2 model with 384 dimensions).
         table_name: str
             Which table name to use. Defaults to "langchain_vector".
         connection_args: Optional[dict[str, any]]
@@ -158,6 +162,22 @@ class OceanbaseVectorStore(VectorStore):
                 embedding_function=embeddings,
                 table_name="langchain_vector",
                 connection_args=connection_args,
+                vidx_metric_type="l2",
+                index_type="HNSW",
+                drop_old=True,
+            )
+
+        Or use default embedding function (all-MiniLM-L6-v2):
+
+        .. code-block:: python
+
+            from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+
+            vector_store = OceanbaseVectorStore(
+                embedding_function=None,  # Automatically uses DefaultEmbeddingFunctionAdapter
+                table_name="langchain_vector",
+                connection_args=connection_args,
+                embedding_dim=384,  # Dimension for all-MiniLM-L6-v2
                 vidx_metric_type="l2",
                 index_type="HNSW",
                 drop_old=True,
@@ -222,7 +242,7 @@ class OceanbaseVectorStore(VectorStore):
 
     def __init__(  # type: ignore[no-untyped-def]
         self,
-        embedding_function: Embeddings,
+        embedding_function: Optional[Embeddings] = None,
         table_name: str = DEFAULT_OCEANBASE_VECTOR_TABLE_NAME,
         connection_args: Optional[dict[str, Any]] = None,
         vidx_metric_type: str = DEFAULT_OCEANBASE_VECTOR_METRIC_TYPE,
@@ -244,6 +264,14 @@ class OceanbaseVectorStore(VectorStore):
         **kwargs,
     ):
         """Initialize the OceanBase vector store."""
+
+        # If embedding_function is None, use DefaultEmbeddingFunctionAdapter
+        if embedding_function is None:
+            embedding_function = DefaultEmbeddingFunctionAdapter()
+            logger.info(
+                f"Using default embedding function: DefaultEmbeddingFunctionAdapter "
+                f"(dimension: {embedding_function.dimension})"
+            )
 
         self.embedding_function = embedding_function
         self.table_name = table_name
@@ -991,7 +1019,7 @@ class OceanbaseVectorStore(VectorStore):
     def from_texts(
         cls,
         texts: list[str],
-        embedding: Embeddings,
+        embedding: Optional[Embeddings] = None,
         metadatas: Optional[list[dict]] = None,
         table_name: str = DEFAULT_OCEANBASE_VECTOR_TABLE_NAME,
         connection_args: Optional[dict[str, Any]] = None,
@@ -1011,7 +1039,9 @@ class OceanbaseVectorStore(VectorStore):
 
         Args:
             texts (List[str]): Text data.
-            embedding (Embeddings): Embedding function.
+            embedding (Optional[Embeddings]): Embedding function.
+                If None, will automatically use DefaultEmbeddingFunctionAdapter
+                (all-MiniLM-L6-v2 model with 384 dimensions).
             metadatas (Optional[List[dict]]): Metadata for each text if it exists.
                 Defaults to None.
             table_name (str): Table name to use. Defaults to "langchain_vector".
