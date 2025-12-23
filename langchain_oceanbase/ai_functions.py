@@ -533,11 +533,10 @@ class OceanBaseAIFunctions:
             if not documents:
                 return []
 
-                if not model_name:
-                    raise ValueError(
-                        "model_name is required for AI_RERANK. "
-                        "Please provide a model name."
-                    )
+            if not model_name:
+                raise ValueError(
+                    "model_name is required for AI_RERANK. Please provide a model name."
+                )
 
             escaped_query = self._escape_sql_string(query)
             escaped_model = self._escape_sql_string(model_name)
@@ -555,6 +554,10 @@ class OceanBaseAIFunctions:
 
                 scores_json = self._execute_sql(sql_str)
                 if scores_json is not None:
+                    # Log the actual format returned from database for debugging
+                    logger.debug(
+                        f"AI_RERANK batch returned type: {type(scores_json)}, value: {scores_json}"
+                    )
                     parsed_result = self._parse_rerank_result(scores_json, documents)
                     return self._format_rerank_results(parsed_result, top_k)
             except Exception as batch_error:
@@ -579,6 +582,11 @@ class OceanBaseAIFunctions:
         Returns:
             List of parsed results.
         """
+        # Log the raw input for debugging
+        logger.debug(
+            f"_parse_rerank_result input type: {type(scores_json)}, value: {scores_json}"
+        )
+
         if isinstance(scores_json, str):
             try:
                 parsed_result = json.loads(scores_json)
@@ -591,31 +599,122 @@ class OceanBaseAIFunctions:
 
         if isinstance(parsed_result, list) and len(parsed_result) > 0:
             first_item = parsed_result[0]
-            if (
-                isinstance(first_item, dict)
-                and "document" in first_item
-                and "score" in first_item
-            ):
-                # Result already contains document and score
-                for item in parsed_result:
-                    results.append(
-                        {
-                            "document": item.get("document", ""),
-                            "score": float(item.get("score", 0)),
-                        }
+            if isinstance(first_item, dict):
+                # Check if result contains document and score/relevance_score
+                if "document" in first_item and (
+                    "score" in first_item or "relevance_score" in first_item
+                ):
+                    # Result already contains document and score
+                    for item in parsed_result:
+                        score_value = item.get("score") or item.get("relevance_score")
+                        if score_value is None:
+                            logger.warning(
+                                f"Missing score in item: {item}, using 0.0 as default"
+                            )
+                            score_value = 0.0
+                        try:
+                            results.append(
+                                {
+                                    "document": item.get("document", ""),
+                                    "score": float(score_value),
+                                }
+                            )
+                        except (ValueError, TypeError) as e:
+                            logger.error(
+                                f"Failed to convert score to float: {score_value}, "
+                                f"type: {type(score_value)}, error: {e}"
+                            )
+                            raise
+                elif "relevance_score" in first_item or "score" in first_item:
+                    # Result is list of dicts with scores but no documents
+                    # Match with documents by index
+                    for idx, item in enumerate(parsed_result):
+                        if not isinstance(item, dict):
+                            logger.warning(
+                                f"Item at index {idx} is not a dict: {type(item)}, "
+                                f"value: {item}"
+                            )
+                            continue
+                        score_value = item.get("score") or item.get("relevance_score")
+                        if score_value is None:
+                            logger.warning(
+                                f"Missing score in item at index {idx}: {item}, "
+                                f"using 0.0 as default"
+                            )
+                            score_value = 0.0
+                        if idx < len(documents):
+                            try:
+                                results.append(
+                                    {
+                                        "document": documents[idx],
+                                        "score": float(score_value),
+                                    }
+                                )
+                            except (ValueError, TypeError) as e:
+                                logger.error(
+                                    f"Failed to convert score to float at index {idx}: "
+                                    f"{score_value}, type: {type(score_value)}, error: {e}"
+                                )
+                                raise
+                else:
+                    # Result is just scores array (numeric values)
+                    # But wait, if first_item is dict but doesn't have score/relevance_score,
+                    # we shouldn't treat it as numeric values
+                    logger.warning(
+                        f"Unexpected dict format in list: {first_item}. "
+                        f"Expected 'score' or 'relevance_score' key."
+                    )
+                    raise ValueError(
+                        f"Unexpected dict format in rerank result: {first_item}"
                     )
             else:
-                # Result is just scores array
+                # Result is just scores array (numeric values)
                 for doc, score in zip(documents, parsed_result):
-                    results.append(
-                        {
-                            "document": doc,
-                            "score": float(score),
-                        }
-                    )
+                    try:
+                        results.append(
+                            {
+                                "document": doc,
+                                "score": float(score),
+                            }
+                        )
+                    except (ValueError, TypeError) as e:
+                        logger.error(
+                            f"Failed to convert score to float: {score}, "
+                            f"type: {type(score)}, error: {e}"
+                        )
+                        raise
+        elif isinstance(parsed_result, dict):
+            # Single result as dict
+            score_value = parsed_result.get("score") or parsed_result.get(
+                "relevance_score"
+            )
+            if score_value is None:
+                logger.warning(
+                    f"Missing score in dict result: {parsed_result}, using 0.0 as default"
+                )
+                score_value = 0.0
+            document = parsed_result.get("document", documents[0] if documents else "")
+            try:
+                results.append(
+                    {
+                        "document": document,
+                        "score": float(score_value),
+                    }
+                )
+            except (ValueError, TypeError) as e:
+                logger.error(
+                    f"Failed to convert score to float: {score_value}, "
+                    f"type: {type(score_value)}, error: {e}"
+                )
+                raise
         else:
-            logger.warning(f"Unexpected AI_RERANK result format: {type(parsed_result)}")
-            raise ValueError("Unexpected AI_RERANK result format")
+            logger.warning(
+                f"Unexpected AI_RERANK result format: {type(parsed_result)}, "
+                f"value: {parsed_result}"
+            )
+            raise ValueError(
+                f"Unexpected AI_RERANK result format: {type(parsed_result)}"
+            )
 
         return results
 
@@ -673,6 +772,10 @@ class OceanBaseAIFunctions:
 
                 score_result = self._execute_sql(sql_str)
                 if score_result is not None:
+                    # Log the actual format returned from database for debugging
+                    logger.debug(
+                        f"AI_RERANK returned type: {type(score_result)}, value: {score_result}"
+                    )
                     score = self._extract_score(score_result)
                     results.append(
                         {
@@ -696,19 +799,97 @@ class OceanBaseAIFunctions:
         Returns:
             Extracted score as float.
         """
+        logger.debug(
+            f"_extract_score input type: {type(score_result)}, value: {score_result}"
+        )
+
+        # Handle dictionary format: {"index": 0, "relevance_score": 0.5}
+        if isinstance(score_result, dict):
+            if "relevance_score" in score_result:
+                return float(score_result["relevance_score"])
+            elif "score" in score_result:
+                return float(score_result["score"])
+            else:
+                raise ValueError(
+                    f"Dictionary result missing 'relevance_score' or 'score' key: {score_result}"
+                )
+
+        # Handle list/tuple format
         if isinstance(score_result, (list, tuple)) and len(score_result) > 0:
-            return float(score_result[0])
+            first_item = score_result[0]
+            # If first item is a dict, extract score from it
+            if isinstance(first_item, dict):
+                if "relevance_score" in first_item:
+                    return float(first_item["relevance_score"])
+                elif "score" in first_item:
+                    return float(first_item["score"])
+                else:
+                    raise ValueError(
+                        f"Dictionary in list missing 'relevance_score' or 'score' key: {first_item}"
+                    )
+            # Otherwise, treat as numeric value
+            return float(first_item)
+
+        # Handle string format (may be JSON)
         elif isinstance(score_result, str):
             try:
                 parsed = json.loads(score_result)
-                if isinstance(parsed, list) and len(parsed) > 0:
-                    return float(parsed[0])
+                logger.debug(
+                    f"Parsed JSON result type: {type(parsed)}, value: {parsed}"
+                )
+                # If parsed result is a dict
+                if isinstance(parsed, dict):
+                    if "relevance_score" in parsed:
+                        return float(parsed["relevance_score"])
+                    elif "score" in parsed:
+                        return float(parsed["score"])
+                    else:
+                        raise ValueError(
+                            f"Parsed dictionary missing 'relevance_score' or 'score' key: {parsed}"
+                        )
+                # If parsed result is a list
+                elif isinstance(parsed, list) and len(parsed) > 0:
+                    first_item = parsed[0]
+                    # If first item is a dict
+                    if isinstance(first_item, dict):
+                        if "relevance_score" in first_item:
+                            return float(first_item["relevance_score"])
+                        elif "score" in first_item:
+                            return float(first_item["score"])
+                        else:
+                            raise ValueError(
+                                f"Dictionary in parsed list missing 'relevance_score' or 'score' key: {first_item}"
+                            )
+                    # Otherwise, treat as numeric value
+                    return float(first_item)
                 else:
-                    return float(parsed)
-            except (json.JSONDecodeError, ValueError, TypeError):
-                return float(score_result)
+                    # Empty list or other unexpected format
+                    raise ValueError(
+                        f"Unexpected parsed result format: {type(parsed)}, value: {parsed}"
+                    )
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, try direct conversion
+                logger.debug(f"JSON decode failed, trying direct float conversion: {e}")
+                try:
+                    return float(score_result)
+                except (ValueError, TypeError) as e2:
+                    raise ValueError(
+                        f"Failed to extract score from string (not valid JSON or number): {score_result}"
+                    ) from e2
+            except (ValueError, TypeError) as e:
+                # Re-raise ValueError/TypeError from float() conversion
+                raise ValueError(
+                    f"Failed to extract score from parsed result: {score_result}"
+                ) from e
+
+        # Handle other types (try direct conversion)
         else:
-            return float(score_result)
+            try:
+                return float(score_result)
+            except (ValueError, TypeError) as e:
+                raise ValueError(
+                    f"Failed to extract score from type {type(score_result)}: {score_result}"
+                ) from e
 
     def batch_ai_embed(
         self,
