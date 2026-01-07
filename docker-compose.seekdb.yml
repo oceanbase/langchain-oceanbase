@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  seekdb:
+    # Replace with the official SeekDB image name if different.
+    # This is intended as a lightweight vector alternative for local dev / demos.
+    image: seekdb/seekdb:latest
+    container_name: seekdb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # SeekDB API port (example)
+    volumes:
+      - ./data/seekdb:/var/lib/seekdb
+    environment:
+      - SEEKDB_MEMORY_LIMIT=512M
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc", "for i in {1..30}; do curl -fs http://127.0.0.1:8080/health && exit 0 || sleep 1; done; exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - ob-net
+
+networks:
+  ob-net:
+    external: false
