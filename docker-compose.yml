@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  oceanbase:
+    image: oceanbase/oceanbase-ce:4.3.5
+    container_name: oceanbase-ce
+    restart: unless-stopped
+    # Adjust container memory args if your image supports custom envs. These are example envs:
+    environment:
+      # Example memory settings - adapt to the actual image/env variables required by the image
+      - OBSERVER_MEM=2G
+      - OBCMS_MEM=512M
+      - VECTOR_MEMORY_LIMIT=1G
+    volumes:
+      - ./data/oceanbase:/var/lib/oceanbase/data
+    ports:
+      - "2881:2881"  # Observer RPC
+      - "3306:3306"  # MySQL-compatible port (used for SQL clients)
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc", "for i in {1..60}; do nc -z 127.0.0.1 3306 && exit 0 || sleep 1; done; exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      - ob-net
+
+networks:
+  ob-net:
+    driver: bridge
