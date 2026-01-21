@@ -53,17 +53,16 @@ tmp_client.perform_raw_text_sql("ALTER SYSTEM ob_vector_memory_limit_percentage 
 
 ## Initialization
 
-Configure the API key of the embedded model. Here we use `DashScopeEmbeddings` as an example. When deploying `Oceanbase` with a Docker image as described above, simply follow the script below to set the `host`, `port`, `user`, `password`, and `database name`. For other deployment methods, set these parameters according to the actual situation.
-%pip install dashscope
+Configure the embedded model. Here we use `DefaultEmbeddingFunctionAdapter` as an example. When deploying `Oceanbase` with a Docker image as described above, simply follow the script below to set the `host`, `port`, `user`, `password`, and `database name`. For other deployment methods, set these parameters according to the actual situation.
 
 ```python
 import os
 
-from langchain_community.embeddings import DashScopeEmbeddings
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-DASHSCOPE_API = os.environ.get("DASHSCOPE_API_KEY", "")
+
 connection_args = {
     "host": "127.0.0.1",
     "port": "2881",
@@ -72,9 +71,7 @@ connection_args = {
     "db_name": "test",
 }
 
-embeddings = DashScopeEmbeddings(
-    model="your-embedding-model", dashscope_api_key=DASHSCOPE_API
-)
+embeddings = DefaultEmbeddingFunctionAdapter()
 
 vector_store = OceanbaseVectorStore(
     embedding_function=embeddings,

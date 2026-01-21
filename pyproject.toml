@@ -18,7 +18,7 @@ disallow_untyped_defs = "True"
 "Release Notes" = "https://github.com/langchain-ai/langchain/releases?q=tag%3A%22oceanbase%3D%3D0%22&expanded=true"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<4.0"
+python = ">=3.11,<3.14"
 langchain-core = ">=1.0.0"
 pyseekdb = ">=0.1.0"
 pyobvector = ">=0.2.0"
