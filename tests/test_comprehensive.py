@@ -111,13 +111,13 @@ def test_basic_functionality() -> bool:
     print("=" * 60)
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
         from langchain_core.documents import Document
 
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
-        # Create fake embeddings
-        embeddings = FakeEmbeddings(size=6)
+        # Create embeddings using DefaultEmbeddingFunctionAdapter
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         # CI OceanBase configuration
         connection_args = {
@@ -142,7 +142,7 @@ def test_basic_functionality() -> bool:
                     connection_args=connection_args,
                     vidx_metric_type="l2",
                     drop_old=True,
-                    embedding_dim=6,
+                    embedding_dim=384,
                     index_type=index_type,
                 )
 
@@ -210,12 +210,12 @@ def test_metric_types() -> bool:
     print("\nTesting metric types...")
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
         from langchain_core.documents import Document
 
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
-        embeddings = FakeEmbeddings(size=6)
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         connection_args = {
             "host": "127.0.0.1",
@@ -237,7 +237,7 @@ def test_metric_types() -> bool:
                     connection_args=connection_args,
                     vidx_metric_type=metric_type,
                     drop_old=True,
-                    embedding_dim=6,
+                    embedding_dim=384,
                 )
 
                 documents = [
@@ -267,11 +267,10 @@ def test_from_texts() -> bool:
     print("\nTesting from_texts method...")
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
-
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
-        embeddings = FakeEmbeddings(size=6)
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         connection_args = {
             "host": "127.0.0.1",
@@ -296,7 +295,7 @@ def test_from_texts() -> bool:
             connection_args=connection_args,
             vidx_metric_type="l2",
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
         )
 
         print("✓ from_texts method successful")

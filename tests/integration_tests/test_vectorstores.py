@@ -2,7 +2,7 @@ import os
 from typing import Generator
 
 import pytest
-from langchain_community.embeddings import FakeEmbeddings
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
 from langchain_tests.integration_tests import (
@@ -75,7 +75,7 @@ class TestOceanbaseVectorStoreIntegration:
             "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
             "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
         }
-        embeddings = FakeEmbeddings(size=6)
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         store = OceanbaseVectorStore(
             embedding_function=embeddings,
@@ -83,7 +83,7 @@ class TestOceanbaseVectorStoreIntegration:
             connection_args=connection_args,
             vidx_metric_type="l2",
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
         )
         return store
 
@@ -100,7 +100,7 @@ class TestOceanbaseVectorStoreIntegration:
         assert len(ids) == 3
 
         # Test that we can retrieve all documents by searching with empty string
-        # This should return all documents since FakeEmbeddings generates random embeddings
+        # This should return all documents since DefaultEmbeddingFunctionAdapter generates consistent embeddings
         all_results = vectorstore.similarity_search("", k=10)
         assert len(all_results) >= 3
 
@@ -162,7 +162,7 @@ class TestOceanbaseVectorStoreIntegration:
             connection_args=vectorstore.connection_args,
             vidx_metric_type="l2",
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
         )
 
         # Verify all texts are present by searching with empty string
@@ -186,7 +186,7 @@ class TestOceanbaseVectorStoreIntegration:
                 connection_args=vectorstore.connection_args,
                 vidx_metric_type=metric_type,
                 drop_old=True,
-                embedding_dim=6,
+                embedding_dim=384,
             )
 
             documents = [
@@ -219,7 +219,7 @@ class TestOceanbaseVectorStoreIntegration:
                 connection_args=vectorstore.connection_args,
                 vidx_metric_type="l2",
                 drop_old=True,
-                embedding_dim=6,
+                embedding_dim=384,
                 index_type=index_type,
             )
 
