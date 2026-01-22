@@ -1060,7 +1060,7 @@ class OceanbaseVectorStore(VectorStore):
 
         # Create table if it doesn't exist
         if not self.obvector.check_table_exists(table_name):
-            create_table_func(embedding_dim=embedding_dim)
+            create_table_func(embedding_dim)
 
         # Generate IDs if not provided
         if ids is None:
