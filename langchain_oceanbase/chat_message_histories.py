@@ -3,6 +3,7 @@
 import json
 import time
 import uuid
+import warnings
 from typing import Any, Dict, List, Optional
 
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -97,6 +98,10 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
     ):
         """Initialize the OceanBase chat message history.
 
+        .. deprecated::
+            OceanBaseChatMessageHistory is deprecated and will be removed in v1.0.
+            Use :class:`OceanBaseCheckpointSaver` with LangGraph instead.
+
         Args:
             table_name (str): Name of the table to store chat messages.
                 Defaults to "langchain_chat_message".
@@ -109,6 +114,14 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
                 - db_name: Database name (default: "test")
             **kwargs: Additional arguments passed to ObVecClient.
         """
+        warnings.warn(
+            "OceanBaseChatMessageHistory is deprecated and will be removed in v1.0. "
+            "Use OceanBaseCheckpointSaver with LangGraph instead. "
+            "See migration guide: https://github.com/oceanbase/langchain-oceanbase#migration",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         self.table_name: str = table_name
         self.connection_args: Dict[str, Any] = (
             connection_args

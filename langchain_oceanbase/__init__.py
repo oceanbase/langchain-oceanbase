@@ -21,6 +21,11 @@ except ImportError:
     OceanbaseVectorStore = None  # type: ignore
 
 try:
+    from langchain_oceanbase.checkpointer import OceanBaseCheckpointSaver
+except ImportError:
+    OceanBaseCheckpointSaver = None  # type: ignore
+
+try:
     __version__ = metadata.version(__package__)
 except metadata.PackageNotFoundError:
     __version__ = ""
@@ -30,6 +35,7 @@ __all__ = [
     "OceanbaseVectorStore",
     "OceanBaseChatMessageHistory",
     "OceanBaseAIFunctions",
+    "OceanBaseCheckpointSaver",
     "DefaultEmbeddingFunction",
     "__version__",
 ]
