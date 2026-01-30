@@ -46,7 +46,7 @@ MIGRATIONS = [
         checkpoint_ns VARCHAR(255) NOT NULL DEFAULT '',
         checkpoint_id VARCHAR(255) NOT NULL,
         parent_checkpoint_id VARCHAR(255),
-        type VARCHAR(255),
+        `type` VARCHAR(255),
         checkpoint JSON NOT NULL,
         metadata JSON,
         PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
@@ -57,8 +57,8 @@ MIGRATIONS = [
         checkpoint_ns VARCHAR(255) NOT NULL DEFAULT '',
         channel VARCHAR(255) NOT NULL,
         version VARCHAR(255) NOT NULL,
-        type VARCHAR(255) NOT NULL,
-        blob LONGBLOB,
+        `type` VARCHAR(255) NOT NULL,
+        `blob` LONGBLOB,
         PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
     );""",
     # Migration 3: Create checkpoint_writes table
@@ -69,8 +69,8 @@ MIGRATIONS = [
         task_id VARCHAR(255) NOT NULL,
         idx INT NOT NULL,
         channel VARCHAR(255) NOT NULL,
-        type VARCHAR(255),
-        blob LONGBLOB NOT NULL,
+        `type` VARCHAR(255),
+        `blob` LONGBLOB NOT NULL,
         task_path VARCHAR(255) NOT NULL DEFAULT '',
         PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
     );""",
@@ -100,16 +100,16 @@ FROM checkpoints c
 
 # SQL for upserting checkpoint blobs (MySQL ON DUPLICATE KEY UPDATE syntax)
 UPSERT_CHECKPOINT_BLOBS_SQL = """
-INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, blob)
-VALUES (%s, %s, %s, %s, %s, %s)
+INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, channel, version, `type`, `blob`)
+VALUES (:thread_id, :checkpoint_ns, :channel, :version, :type, :blob)
 ON DUPLICATE KEY UPDATE
-    type = VALUES(type),
-    blob = VALUES(blob)
+    `type` = VALUES(`type`),
+    `blob` = VALUES(`blob`)
 """
 
 # SQL for upserting checkpoints
 UPSERT_CHECKPOINTS_SQL = """
-INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata)
+INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, `type`, checkpoint, metadata)
 VALUES (%s, %s, %s, %s, %s, %s, %s)
 ON DUPLICATE KEY UPDATE
     checkpoint = VALUES(checkpoint),
@@ -118,17 +118,17 @@ ON DUPLICATE KEY UPDATE
 
 # SQL for upserting checkpoint writes
 UPSERT_CHECKPOINT_WRITES_SQL = """
-INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
+INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, `type`, `blob`)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON DUPLICATE KEY UPDATE
     channel = VALUES(channel),
-    type = VALUES(type),
-    blob = VALUES(blob)
+    `type` = VALUES(`type`),
+    `blob` = VALUES(`blob`)
 """
 
 # SQL for inserting checkpoint writes (ignore on conflict)
 INSERT_CHECKPOINT_WRITES_SQL = """
-INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
+INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, `type`, `blob`)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
@@ -385,7 +385,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         channel_values = {}
         for channel, version in channel_versions.items():
             query = text(
-                "SELECT type, blob FROM checkpoint_blobs "
+                "SELECT `type`, `blob` FROM checkpoint_blobs "
                 "WHERE thread_id = :thread_id "
                 "AND checkpoint_ns = :checkpoint_ns "
                 "AND channel = :channel "
@@ -427,7 +427,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             List of pending writes as (task_id, channel, value) tuples.
         """
         query = text(
-            "SELECT task_id, channel, type, blob FROM checkpoint_writes "
+            "SELECT task_id, channel, `type`, `blob` FROM checkpoint_writes "
             "WHERE thread_id = :thread_id "
             "AND checkpoint_ns = :checkpoint_ns "
             "AND checkpoint_id = :checkpoint_id "
@@ -694,14 +694,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 value = blob_values[channel]
                 type_str, blob = self.serde.dumps_typed(value)
                 conn.execute(
-                    text(UPSERT_CHECKPOINT_BLOBS_SQL.replace("%s", ":p")),
+                    text(UPSERT_CHECKPOINT_BLOBS_SQL),
                     {
-                        "p": thread_id,
-                        "p1": checkpoint_ns,
-                        "p2": channel,
-                        "p3": str(version),
-                        "p4": type_str,
-                        "p5": blob,
+                        "thread_id": thread_id,
+                        "checkpoint_ns": checkpoint_ns,
+                        "channel": channel,
+                        "version": str(version),
+                        "type": type_str,
+                        "blob": blob,
                     },
                 )
 
@@ -714,7 +714,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     """
                     INSERT INTO checkpoints 
                     (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, 
-                     type, checkpoint, metadata)
+                     `type`, checkpoint, metadata)
                     VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
                             :parent_checkpoint_id, :type, :checkpoint, :metadata)
                     ON DUPLICATE KEY UPDATE
@@ -796,19 +796,19 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     sql = """
                         INSERT INTO checkpoint_writes 
                         (thread_id, checkpoint_ns, checkpoint_id, task_id, 
-                         task_path, idx, channel, type, blob)
+                         task_path, idx, channel, `type`, `blob`)
                         VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
                                 :task_id, :task_path, :idx, :channel, :type, :blob)
                         ON DUPLICATE KEY UPDATE
                             channel = VALUES(channel),
-                            type = VALUES(type),
-                            blob = VALUES(blob)
+                            `type` = VALUES(`type`),
+                            `blob` = VALUES(`blob`)
                     """
                 else:
                     sql = """
                         INSERT IGNORE INTO checkpoint_writes 
                         (thread_id, checkpoint_ns, checkpoint_id, task_id, 
-                         task_path, idx, channel, type, blob)
+                         task_path, idx, channel, `type`, `blob`)
                         VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
                                 :task_id, :task_path, :idx, :channel, :type, :blob)
                     """

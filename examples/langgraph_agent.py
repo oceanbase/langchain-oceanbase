@@ -113,13 +113,24 @@ def get_checkpointer():
 
     Returns:
         OceanBaseCheckpointSaver instance.
+
+    Note:
+        Configure your OceanBase connection via environment variables:
+        - OCEANBASE_HOST: Database host address
+        - OCEANBASE_PORT: Database port (default: 3306 for cloud, 2881 for local)
+        - OCEANBASE_USER: Database user
+        - OCEANBASE_PASSWORD: Database password
+        - OCEANBASE_DB: Database name
+
+        Or modify the default values below for your environment.
     """
     # Connection configuration
+    # Default values are for Aliyun OceanBase Cloud - modify for your environment
     connection_args = {
-        "host": os.getenv("OCEANBASE_HOST", "127.0.0.1"),
+        "host": os.getenv("OCEANBASE_HOST","127.0.0.1"),
         "port": os.getenv("OCEANBASE_PORT", "2881"),
         "user": os.getenv("OCEANBASE_USER", "root@test"),
-        "password": os.getenv("OCEANBASE_PASSWORD", ""),
+        "password": os.getenv("OCEANBASE_PASSWORD", ""), 
         "db_name": os.getenv("OCEANBASE_DB", "test"),
     }
 
