@@ -263,100 +263,56 @@ make lint
 make typecheck
 ```
 
+## Migration Guide: ChatMessageHistory to LangGraph
+
+`OceanBaseChatMessageHistory` is deprecated in favor of LangGraph's checkpointer pattern.
+
+### Why Migrate?
+LangGraph's persistence model offers significantly more power than simple chat history:
+*   **Full State Persistence**: Saves not just messages, but the entire program state (variables, execution steps).
+*   **Time Travel**: Rewind to any previous step in the conversation.
+*   **Resumable Workflows**: Stop and resume agents across server restarts.
+*   **Human-in-the-loop**: Inspect and modify state before proceeding.
+
+### How to Migrate
+
+**Old Way (ChatMessageHistory)**:
+```python
+from langchain_oceanbase import OceanBaseChatMessageHistory
+
+history = OceanBaseChatMessageHistory(
+    table_name="chat_history",
+    connection_args=connection_args
+)
+history.add_message(HumanMessage(content="hi"))
+```
+
+**New Way (LangGraph Checkpointer)**:
+```python
+# 1. Install with langgraph support
+# pip install langchain-oceanbase[langgraph]
+
+from langchain_oceanbase.checkpoint import OceanBaseSaver
+from langgraph.graph import StateGraph
+
+# Initialize Checkpointer
+checkpointer = OceanBaseSaver(connection_args=connection_args)
+
+# Use in LangGraph
+builder = StateGraph(...)
+# ... define graph ...
+graph = builder.compile(checkpointer=checkpointer)
+
+# Run with thread_id for persistence
+config = {"configurable": {"thread_id": "thread-1"}}
+graph.invoke({"messages": [HumanMessage(content="hi")]}, config=config)
+```
+
+
+
 ## Contributing
 
 See `CONTRIBUTING.md` for detailed developer setup and the PR process. When submitting a PR, please:
 - Base your branch on `main`
 - Reference the issue (e.g., `Closes #43`) in the PR body
-
-## Migration Guide: ChatMessageHistory to LangGraph
-
-`OceanBaseChatMessageHistory` is deprecated in favor of LangGraph's checkpointer pattern.
-
-### Why Migrate?
-LangGraph's persistence model offers significantly more power than simple chat history:
-*   **Full State Persistence**: Saves not just messages, but the entire program state (variables, execution steps).
-*   **Time Travel**: Rewind to any previous step in the conversation.
-*   **Resumable Workflows**: Stop and resume agents across server restarts.
-*   **Human-in-the-loop**: Inspect and modify state before proceeding.
-
-### How to Migrate
-
-**Old Way (ChatMessageHistory)**:
-```python
-from langchain_oceanbase import OceanBaseChatMessageHistory
-
-history = OceanBaseChatMessageHistory(
-    table_name="chat_history",
-    connection_args=connection_args
-)
-history.add_message(HumanMessage(content="hi"))
-```
-
-**New Way (LangGraph Checkpointer)**:
-```python
-# 1. Install with langgraph support
-# pip install langchain-oceanbase[langgraph]
-
-from langchain_oceanbase.checkpoint import OceanBaseSaver
-from langgraph.graph import StateGraph
-
-# Initialize Checkpointer
-checkpointer = OceanBaseSaver(connection_args=connection_args)
-
-# Use in LangGraph
-builder = StateGraph(...)
-# ... define graph ...
-graph = builder.compile(checkpointer=checkpointer)
-
-# Run with thread_id for persistence
-config = {"configurable": {"thread_id": "thread-1"}}
-graph.invoke({"messages": [HumanMessage(content="hi")]}, config=config)
-```
-
-## Migration Guide: ChatMessageHistory to LangGraph
-
-`OceanBaseChatMessageHistory` is deprecated in favor of LangGraph's checkpointer pattern.
-
-`OceanBaseChatMessageHistory` is deprecated in favor of LangGraph's checkpointer pattern.
-
-### Why Migrate?
-LangGraph's persistence model offers significantly more power than simple chat history:
-*   **Full State Persistence**: Saves not just messages, but the entire program state (variables, execution steps).
-*   **Time Travel**: Rewind to any previous step in the conversation.
-*   **Resumable Workflows**: Stop and resume agents across server restarts.
-*   **Human-in-the-loop**: Inspect and modify state before proceeding.
-
-### How to Migrate
-
-**Old Way (ChatMessageHistory)**:
-```python
-from langchain_oceanbase import OceanBaseChatMessageHistory
-
-history = OceanBaseChatMessageHistory(
-    table_name="chat_history",
-    connection_args=connection_args
-)
-history.add_message(HumanMessage(content="hi"))
-```
-
-**New Way (LangGraph Checkpointer)**:
-```python
-# 1. Install with langgraph support
-# pip install langchain-oceanbase[langgraph]
-
-from langchain_oceanbase.checkpoint import OceanBaseSaver
-from langgraph.graph import StateGraph
-
-# Initialize Checkpointer
-checkpointer = OceanBaseSaver(connection_args=connection_args)
-
-# Use in LangGraph
-builder = StateGraph(...)
-# ... define graph ...
-graph = builder.compile(checkpointer=checkpointer)
-
-# Run with thread_id for persistence
-config = {"configurable": {"thread_id": "thread-1"}}
-graph.invoke({"messages": [HumanMessage(content="hi")]}, config=config)
-```
+- Run linters and tests locally
