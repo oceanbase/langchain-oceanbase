@@ -15,6 +15,7 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 
 ## Features
 
+* **LangGraph Integration**: Full support for LangGraph state persistence using `OceanBaseSaver`.
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
   * **No API Keys Required**: Uses local ONNX models, no external API calls needed
   * **Quick Start**: Perfect for rapid prototyping and testing
@@ -175,4 +176,49 @@ for doc in results:
 - [**Advanced Filtering**](./docs/vectorstores.md#advanced-filtering) - Metadata filtering and complex query conditions
 - [**Maximal Marginal Relevance**](./docs/vectorstores.md#maximal-marginal-relevance) - Filter for diversity in search results
 - [**Multiple Index Types**](./docs/vectorstores.md#multiple-index-types) - Different vector index types (HNSW, IVF, FLAT)
+
+## Migration Guide: ChatMessageHistory to LangGraph
+
+`OceanBaseChatMessageHistory` is deprecated in favor of LangGraph's checkpointer pattern.
+
+### Why Migrate?
+LangGraph's persistence model offers significantly more power than simple chat history:
+*   **Full State Persistence**: Saves not just messages, but the entire program state (variables, execution steps).
+*   **Time Travel**: Rewind to any previous step in the conversation.
+*   **Resumable Workflows**: Stop and resume agents across server restarts.
+*   **Human-in-the-loop**: Inspect and modify state before proceeding.
+
+### How to Migrate
+
+**Old Way (ChatMessageHistory)**:
+```python
+from langchain_oceanbase import OceanBaseChatMessageHistory
+
+history = OceanBaseChatMessageHistory(
+    table_name="chat_history",
+    connection_args=connection_args
+)
+history.add_message(HumanMessage(content="hi"))
+```
+
+**New Way (LangGraph Checkpointer)**:
+```python
+# 1. Install with langgraph support
+# pip install langchain-oceanbase[langgraph]
+
+from langchain_oceanbase.checkpoint import OceanBaseSaver
+from langgraph.graph import StateGraph
+
+# Initialize Checkpointer
+checkpointer = OceanBaseSaver(connection_args=connection_args)
+
+# Use in LangGraph
+builder = StateGraph(...)
+# ... define graph ...
+graph = builder.compile(checkpointer=checkpointer)
+
+# Run with thread_id for persistence
+config = {"configurable": {"thread_id": "thread-1"}}
+graph.invoke({"messages": [HumanMessage(content="hi")]}, config=config)
+```
 
