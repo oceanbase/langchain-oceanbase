@@ -26,7 +26,6 @@ from langgraph.checkpoint.base import (
     get_checkpoint_id,
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
-from langgraph.checkpoint.serde.types import TASKS
 from pyobvector import ObVecClient
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -79,19 +78,19 @@ MIGRATIONS = [
         PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
     );""",
     # Migration 4: Add indexes for better query performance
-    """CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_id 
+    """CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_id
        ON checkpoints(thread_id);""",
     # Migration 5: Add index on checkpoint_blobs
-    """CREATE INDEX IF NOT EXISTS idx_checkpoint_blobs_thread_id 
+    """CREATE INDEX IF NOT EXISTS idx_checkpoint_blobs_thread_id
        ON checkpoint_blobs(thread_id);""",
     # Migration 6: Add index on checkpoint_writes
-    """CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_thread_id 
+    """CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_thread_id
        ON checkpoint_writes(thread_id);""",
 ]
 
 # SQL for selecting checkpoints with channel values and pending writes
 SELECT_SQL = """
-SELECT 
+SELECT
     c.thread_id,
     c.checkpoint_ns,
     c.checkpoint_id,
@@ -238,7 +237,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             )
         except Exception as e:
             error_msg = str(e).lower()
-            if "connect" in error_msg or "refused" in error_msg or "timeout" in error_msg:
+            if (
+                "connect" in error_msg
+                or "refused" in error_msg
+                or "timeout" in error_msg
+            ):
                 raise OceanBaseConnectionError(
                     f"Failed to connect to OceanBase: {e}",
                     host=host,
@@ -366,12 +369,18 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
             # Load channel values from blobs
             channel_values = self._load_channel_values(
-                conn, thread_id, checkpoint_ns, row[5]  # row[5] is checkpoint JSON
+                conn,
+                thread_id,
+                checkpoint_ns,
+                row[5],  # row[5] is checkpoint JSON
             )
 
             # Load pending writes
             pending_writes = self._load_pending_writes(
-                conn, thread_id, checkpoint_ns, row[2]  # row[2] is checkpoint_id
+                conn,
+                thread_id,
+                checkpoint_ns,
+                row[2],  # row[2] is checkpoint_id
             )
 
             return self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
@@ -517,8 +526,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             "channel_values": checkpoint_channel_values,
             "channel_versions": checkpoint_data.get("channel_versions", {}),
             "versions_seen": checkpoint_data.get("versions_seen", {}),
-            "pending_sends": checkpoint_data.get("pending_sends", []),
-            "updated_channels": checkpoint_data.get("updated_channels"),
+            "pending_sends": checkpoint_data.get("pending_sends", []),  # type: ignore[typeddict-item]
         }
 
         return CheckpointTuple(
@@ -641,9 +649,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 conditions.append(
                     f"JSON_EXTRACT(c.metadata, '$.{key}') = :{param_name}"
                 )
-                params[param_name] = json.dumps(value) if not isinstance(
-                    value, (str, int, float, bool)
-                ) else value
+                params[param_name] = (
+                    json.dumps(value)
+                    if not isinstance(value, (str, int, float, bool))
+                    else value
+                )
 
         if before:
             before_checkpoint_id = get_checkpoint_id(before)
@@ -731,10 +741,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             conn.execute(
                 text(
                     """
-                    INSERT INTO checkpoints 
-                    (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, 
+                    INSERT INTO checkpoints
+                    (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id,
                      `type`, checkpoint, metadata)
-                    VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
+                    VALUES (:thread_id, :checkpoint_ns, :checkpoint_id,
                             :parent_checkpoint_id, :type, :checkpoint, :metadata)
                     ON DUPLICATE KEY UPDATE
                         checkpoint = VALUES(checkpoint),
@@ -813,10 +823,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 # Use INSERT IGNORE for special writes, UPSERT for others
                 if channel in WRITES_IDX_MAP:
                     sql = """
-                        INSERT INTO checkpoint_writes 
-                        (thread_id, checkpoint_ns, checkpoint_id, task_id, 
+                        INSERT INTO checkpoint_writes
+                        (thread_id, checkpoint_ns, checkpoint_id, task_id,
                          task_path, idx, channel, `type`, `blob`)
-                        VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
+                        VALUES (:thread_id, :checkpoint_ns, :checkpoint_id,
                                 :task_id, :task_path, :idx, :channel, :type, :blob)
                         ON DUPLICATE KEY UPDATE
                             channel = VALUES(channel),
@@ -825,10 +835,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     """
                 else:
                     sql = """
-                        INSERT IGNORE INTO checkpoint_writes 
-                        (thread_id, checkpoint_ns, checkpoint_id, task_id, 
+                        INSERT IGNORE INTO checkpoint_writes
+                        (thread_id, checkpoint_ns, checkpoint_id, task_id,
                          task_path, idx, channel, `type`, `blob`)
-                        VALUES (:thread_id, :checkpoint_ns, :checkpoint_id, 
+                        VALUES (:thread_id, :checkpoint_ns, :checkpoint_id,
                                 :task_id, :task_path, :idx, :channel, :type, :blob)
                     """
 

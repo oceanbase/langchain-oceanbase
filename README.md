@@ -1,5 +1,10 @@
 # langchain-oceanbase
 
+[![CI](https://github.com/oceanbase/langchain-oceanbase/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanbase/langchain-oceanbase/actions/workflows/ci.yml)
+[![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
+[![Python Version](https://img.shields.io/pypi/pyversions/langchain-oceanbase.svg)](https://pypi.org/project/langchain-oceanbase/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This package contains the LangChain integration with OceanBase.
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
@@ -316,4 +321,3 @@ For AI functions support:
 ```bash
 pip install -U langchain-oceanbase pyobvector langgraph-checkpoint
 ```
-

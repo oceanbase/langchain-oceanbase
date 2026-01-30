@@ -12,6 +12,7 @@ import pytest
 # Try to import pyseekdb first to check availability
 try:
     from pyseekdb import DefaultEmbeddingFunction as PySeekDBDefaultEmbeddingFunction
+
     PYSEEKDB_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     PySeekDBDefaultEmbeddingFunction = None
@@ -26,7 +27,9 @@ except (ImportError, ModuleNotFoundError):
 
 if PYSEEKDB_AVAILABLE and embedding_utils_module is not None:
     DefaultEmbeddingFunction = embedding_utils_module.DefaultEmbeddingFunction
-    DefaultEmbeddingFunctionAdapter = embedding_utils_module.DefaultEmbeddingFunctionAdapter
+    DefaultEmbeddingFunctionAdapter = (
+        embedding_utils_module.DefaultEmbeddingFunctionAdapter
+    )
 else:
     DefaultEmbeddingFunction = None
     DefaultEmbeddingFunctionAdapter = None
@@ -205,6 +208,7 @@ class TestDefaultEmbeddingFunctionAdapter:
         emb1 = adapter.embed_query(text1)
         emb2 = adapter.embed_query(text2)
         emb3 = adapter.embed_query(text3)
+
         # Compute cosine similarity
         def cosine_similarity(vec1, vec2):
             dot_product = sum(a * b for a, b in zip(vec1, vec2))
