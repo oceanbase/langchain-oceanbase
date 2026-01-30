@@ -29,8 +29,6 @@ from sqlalchemy.dialects.mysql import LONGTEXT
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
-    OceanBaseConnectionError,
-    OceanBaseIndexError,
     OceanBaseVectorDimensionError,
 )
 
@@ -53,9 +51,9 @@ DEFAULT_OCEANBASE_HNSW_SEARCH_PARAM = {"efSearch": 64}
 # from: https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000002012936
 DEFAULT_OCEANBASE_IVF_BUILD_PARAM = {"nlist": 128}
 
-DEFAULT_OCEANBASE_IVF_SEARCH_PARAM = {}
-DEFAULT_OCEANBASE_FLAT_BUILD_PARAM = {}
-DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM = {}
+DEFAULT_OCEANBASE_IVF_SEARCH_PARAM: Dict[str, Any] = {}
+DEFAULT_OCEANBASE_FLAT_BUILD_PARAM: Dict[str, Any] = {}
+DEFAULT_OCEANBASE_FLAT_SEARCH_PARAM: Dict[str, Any] = {}
 
 # Supported index types mapping
 OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
@@ -521,8 +519,8 @@ class OceanbaseVectorStore(VectorStore):
                 self.hnsw_ef_search = ef_search
 
     def _convert_results_to_documents(
-        self, results, include_score: bool = False
-    ) -> List[Document] | List[Tuple[Document, float]]:
+        self, results: Any, include_score: bool = False
+    ) -> List[Any]:
         """
         Convert search results to Document objects.
 
@@ -971,7 +969,7 @@ class OceanbaseVectorStore(VectorStore):
                 f" for distance_strategy of {self.vidx_metric_type}."
             )
 
-    def _get_distance_function(self, metric_type: str):
+    def _get_distance_function(self, metric_type: str) -> Callable[..., Any]:
         """
         Get the appropriate distance function for the given metric type.
         """
@@ -984,7 +982,7 @@ class OceanbaseVectorStore(VectorStore):
         else:
             raise ValueError(f"Unsupported metric type: {metric_type}")
 
-    def _convert_list_results_to_documents(self, results):
+    def _convert_list_results_to_documents(self, results: List[Any]) -> List[Document]:
         """
         Convert search results (list format) to Document objects.
         Used for converting combined results from hybrid search.
@@ -1401,7 +1399,9 @@ class OceanbaseVectorStore(VectorStore):
 
         return self._convert_results_to_documents(res, include_score=False)
 
-    def _combine_hybrid_results(self, vector_results, fulltext_results, k: int) -> List:
+    def _combine_hybrid_results(
+        self, vector_results: Any, fulltext_results: Any, k: int
+    ) -> List[Any]:
         """
         Combine and rank results from vector and full-text search.
 
@@ -1435,7 +1435,7 @@ class OceanbaseVectorStore(VectorStore):
                     fulltext_list.append(row)
 
         # Create a dictionary to store combined scores
-        combined_scores = {}
+        combined_scores: Dict[Any, float] = {}
 
         # Process vector results (higher weight for semantic similarity)
         for i, result in enumerate(vector_list):
@@ -1524,8 +1524,10 @@ class OceanbaseVectorStore(VectorStore):
                 "fulltext": 0.2,  # Text search
             }
 
-        combined_scores = {}
-        all_converted_results = {}  # Store converted results by modality
+        combined_scores: Dict[Any, float] = {}
+        all_converted_results: Dict[
+            str, List[Any]
+        ] = {}  # Store converted results by modality
 
         # Process results from each modality
         for modality_type, results in all_results:

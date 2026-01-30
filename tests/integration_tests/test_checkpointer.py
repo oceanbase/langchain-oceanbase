@@ -72,7 +72,7 @@ class TestOceanBaseCheckpointSaverSetup:
 
     @pytest.mark.skip(
         reason="This test requires a local OceanBase instance at localhost:2881. "
-               "Run manually when local OceanBase is available."
+        "Run manually when local OceanBase is available."
     )
     def test_default_connection_args(self):
         """Test that default connection args are used when none provided.

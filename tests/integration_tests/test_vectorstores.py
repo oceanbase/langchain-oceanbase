@@ -2,13 +2,13 @@ import os
 from typing import Generator
 
 import pytest
-from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
 from langchain_tests.integration_tests import (
     VectorStoreIntegrationTests,
 )
 
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
 EMBEDDING_SIZE = 6
