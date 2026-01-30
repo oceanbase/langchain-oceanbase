@@ -27,6 +27,12 @@ from sqlalchemy import JSON, Column, String, Table, func, select, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
+from langchain_oceanbase.exceptions import (
+    OceanBaseConfigurationError,
+    OceanBaseConnectionError,
+    OceanBaseIndexError,
+    OceanBaseVectorDimensionError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -286,18 +292,29 @@ class OceanbaseVectorStore(VectorStore):
         assert self.obvector is not None
 
         self.vidx_metric_type = vidx_metric_type.lower()
-        if self.vidx_metric_type not in ("l2", "inner_product", "cosine"):
-            raise ValueError(
-                "`vidx_metric_type` should be set in `l2`/`inner_product`/`cosine`."
+        valid_metric_types = ("l2", "inner_product", "cosine")
+        if self.vidx_metric_type not in valid_metric_types:
+            raise OceanBaseConfigurationError(
+                f"Invalid vidx_metric_type: '{vidx_metric_type}'. "
+                f"Use one of: {', '.join(valid_metric_types)}. "
+                f"Tip: 'l2' for Euclidean distance, 'cosine' for text similarity, "
+                f"'inner_product' for normalized vectors.",
+                parameter="vidx_metric_type",
+                valid_values=list(valid_metric_types),
             )
 
         # Set index type and default parameters
         self.index_type = index_type.upper()
+        valid_index_types = list(OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES.keys())
         if self.index_type not in OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES:
-            raise ValueError(
-                f"`index_type` should be one of "
-                f"{list(OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES.keys())}. "
-                f"Got {self.index_type}"
+            raise OceanBaseConfigurationError(
+                f"Invalid index_type: '{index_type}'. "
+                f"Use one of: {', '.join(valid_index_types)}. "
+                f"Tip: Use 'HNSW' for large datasets (fast search), "
+                f"'FLAT' for small datasets (exact search), "
+                f"'IVF_FLAT' for memory-constrained scenarios.",
+                parameter="index_type",
+                valid_values=valid_index_types,
             )
 
         # Set default parameters based on index type
@@ -343,9 +360,11 @@ class OceanbaseVectorStore(VectorStore):
         # All data is stored in one table with both dense vector and sparse vector indexes
         # OceanBase supports vector index, sparse vector index, and fulltext index together in one table
         if self.include_fulltext and not self.include_sparse:
-            raise ValueError(
-                "Full-text search requires sparse vector support. "
-                "Set include_sparse=True when include_fulltext=True."
+            raise OceanBaseConfigurationError(
+                "Full-text search requires sparse vector support to be enabled. "
+                "When using include_fulltext=True, you must also set include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         if self.drop_old:
@@ -1053,9 +1072,13 @@ class OceanbaseVectorStore(VectorStore):
                 documents[0].page_content
             )
             embedding_dim = len(sample_embedding)
-        except Exception:
-            raise ValueError(
-                "Failed to generate embedding. Cannot determine embedding dimension."
+        except Exception as e:
+            raise OceanBaseVectorDimensionError(
+                f"Failed to generate embedding: {e}. "
+                "Cannot determine embedding dimension automatically. "
+                "Solutions: 1) Check your embedding function is properly configured. "
+                "2) Specify embedding_dim explicitly when initializing OceanbaseVectorStore. "
+                "3) Ensure the document content is not empty."
             )
 
         # Create table if it doesn't exist
@@ -1127,14 +1150,18 @@ class OceanbaseVectorStore(VectorStore):
                 # This will update existing records instead of creating duplicates
         """
         if not self.include_sparse:
-            raise ValueError(
-                "Sparse vector support not enabled. Set include_sparse=True when "
-                "initializing."
+            raise OceanBaseConfigurationError(
+                "Sparse vector support is not enabled. "
+                "To use sparse vectors, initialize OceanbaseVectorStore with include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True)",
+                parameter="include_sparse",
             )
 
         if len(documents) != len(sparse_embeddings):
-            raise ValueError(
-                "Number of documents must match number of sparse embeddings"
+            raise OceanBaseVectorDimensionError(
+                f"Number of documents ({len(documents)}) must match number of "
+                f"sparse embeddings ({len(sparse_embeddings)}). "
+                "Ensure each document has a corresponding sparse embedding."
             )
 
         return self._add_documents_with_hybrid_field(
@@ -1185,21 +1212,27 @@ class OceanbaseVectorStore(VectorStore):
                 # This will update existing records instead of creating duplicates
         """
         if not self.include_fulltext:
-            raise ValueError(
-                "Full-text search support not enabled. Set include_fulltext=True "
-                "when initializing."
+            raise OceanBaseConfigurationError(
+                "Full-text search support is not enabled. "
+                "To use full-text search, initialize OceanbaseVectorStore with include_fulltext=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         if len(documents) != len(fulltext_content):
-            raise ValueError(
-                "Number of documents must match number of fulltext content items"
+            raise OceanBaseVectorDimensionError(
+                f"Number of documents ({len(documents)}) must match number of "
+                f"fulltext content items ({len(fulltext_content)}). "
+                "Ensure each document has corresponding fulltext content."
             )
 
         # Fulltext requires sparse support
         if not self.include_sparse:
-            raise ValueError(
-                "Full-text search requires sparse vector support. "
-                "Set include_sparse=True when include_fulltext=True."
+            raise OceanBaseConfigurationError(
+                "Full-text search requires sparse vector support to be enabled. "
+                "When using include_fulltext=True, you must also set include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         return self._add_documents_with_hybrid_field(
@@ -1254,32 +1287,43 @@ class OceanbaseVectorStore(VectorStore):
             return self.add_documents(documents, ids=ids)
 
         if sparse_embeddings is not None and not self.include_sparse:
-            raise ValueError(
-                "Sparse vector support not enabled. Set include_sparse=True when "
-                "initializing."
+            raise OceanBaseConfigurationError(
+                "Sparse vector support is not enabled. "
+                "To use sparse vectors, initialize OceanbaseVectorStore with include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True)",
+                parameter="include_sparse",
             )
 
         if fulltext_content is not None and not self.include_fulltext:
-            raise ValueError(
-                "Full-text search support not enabled. Set include_fulltext=True "
-                "when initializing."
+            raise OceanBaseConfigurationError(
+                "Full-text search support is not enabled. "
+                "To use full-text search, initialize OceanbaseVectorStore with include_fulltext=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         if sparse_embeddings is not None and len(documents) != len(sparse_embeddings):
-            raise ValueError(
-                "Number of documents must match number of sparse embeddings"
+            raise OceanBaseVectorDimensionError(
+                f"Number of documents ({len(documents)}) must match number of "
+                f"sparse embeddings ({len(sparse_embeddings)}). "
+                "Ensure each document has a corresponding sparse embedding."
             )
 
         if fulltext_content is not None and len(documents) != len(fulltext_content):
-            raise ValueError(
-                "Number of documents must match number of fulltext content items"
+            raise OceanBaseVectorDimensionError(
+                f"Number of documents ({len(documents)}) must match number of "
+                f"fulltext content items ({len(fulltext_content)}). "
+                "Ensure each document has corresponding fulltext content."
             )
 
         # Generate IDs if not provided
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in documents]
         elif len(ids) != len(documents):
-            raise ValueError("Number of IDs must match number of documents")
+            raise OceanBaseVectorDimensionError(
+                f"Number of IDs ({len(ids)}) must match number of documents ({len(documents)}). "
+                "Provide one ID per document or omit the ids parameter to auto-generate."
+            )
 
         # Prepare data for upsert
         data = []
@@ -1330,12 +1374,14 @@ class OceanbaseVectorStore(VectorStore):
             List of similar documents
 
         Raises:
-            ValueError: If sparse vector support is not enabled
+            OceanBaseConfigurationError: If sparse vector support is not enabled
         """
         if not self.include_sparse:
-            raise ValueError(
-                "Sparse vector support not enabled. Set include_sparse=True when "
-                "initializing."
+            raise OceanBaseConfigurationError(
+                "Sparse vector support is not enabled. "
+                "To use sparse vector search, initialize OceanbaseVectorStore with include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True)",
+                parameter="include_sparse",
             )
 
         # Search from the table (all data is in one table with both dense and sparse vector indexes)
@@ -1566,19 +1612,23 @@ class OceanbaseVectorStore(VectorStore):
             List of similar documents ranked by hybrid score
 
         Raises:
-            ValueError: If full-text search support is not enabled
+            OceanBaseConfigurationError: If full-text search support is not enabled
         """
         if not self.include_fulltext:
-            raise ValueError(
-                "Full-text search support not enabled. Set include_fulltext=True "
-                "when initializing."
+            raise OceanBaseConfigurationError(
+                "Full-text search support is not enabled. "
+                "To use full-text search, initialize OceanbaseVectorStore with include_fulltext=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         # Fulltext requires sparse support
         if not self.include_sparse:
-            raise ValueError(
-                "Full-text search requires sparse vector support. "
-                "Set include_sparse=True when include_fulltext=True."
+            raise OceanBaseConfigurationError(
+                "Full-text search requires sparse vector support to be enabled. "
+                "When using include_fulltext=True, you must also set include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         # Search from the table (all data is in one table with both dense vector, sparse vector, and fulltext indexes)
@@ -1640,18 +1690,26 @@ class OceanbaseVectorStore(VectorStore):
                 not enabled, or weights don't sum to 1.0
         """
         if not any([vector_query, sparse_query, fulltext_query]):
-            raise ValueError("At least one search modality must be provided")
+            raise OceanBaseConfigurationError(
+                "At least one search modality must be provided. "
+                "Provide one or more of: vector_query (str), sparse_query (dict), or fulltext_query (str). "
+                "Example: multi_modal_search(vector_query='search text', k=5)"
+            )
 
         if sparse_query and not self.include_sparse:
-            raise ValueError(
-                "Sparse vector support not enabled. Set include_sparse=True when "
-                "initializing."
+            raise OceanBaseConfigurationError(
+                "Sparse vector support is not enabled. "
+                "To use sparse vectors in search, initialize OceanbaseVectorStore with include_sparse=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True)",
+                parameter="include_sparse",
             )
 
         if fulltext_query and not self.include_fulltext:
-            raise ValueError(
-                "Full-text search support not enabled. Set include_fulltext=True "
-                "when initializing."
+            raise OceanBaseConfigurationError(
+                "Full-text search support is not enabled. "
+                "To use full-text search, initialize OceanbaseVectorStore with include_fulltext=True. "
+                "Example: OceanbaseVectorStore(..., include_sparse=True, include_fulltext=True)",
+                parameter="include_fulltext",
             )
 
         # Validate and set up modality weights
@@ -1663,8 +1721,11 @@ class OceanbaseVectorStore(VectorStore):
             # Validate weights
             total_weight = sum(modality_weights.values())
             if abs(total_weight - 1.0) > 0.01:  # Allow small floating point errors
-                raise ValueError(
-                    f"Modality weights must sum to 1.0, got {total_weight}"
+                raise OceanBaseConfigurationError(
+                    f"Modality weights must sum to 1.0, but got {total_weight:.2f}. "
+                    f"Current weights: {modality_weights}. "
+                    "Example: modality_weights={'vector': 0.5, 'sparse': 0.3, 'fulltext': 0.2}",
+                    parameter="modality_weights",
                 )
 
             # Ensure all required keys are present

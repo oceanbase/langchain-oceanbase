@@ -8,6 +8,7 @@ their state within and across multiple interactions.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import threading
 from collections.abc import Iterator, Sequence
@@ -30,7 +31,10 @@ from pyobvector import ObVecClient
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
+
+logger = logging.getLogger(__name__)
 
 MetadataInput = Dict[str, Any] | None
 
@@ -214,6 +218,9 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
         Args:
             **kwargs: Additional arguments passed to ObVecClient constructor.
+
+        Raises:
+            OceanBaseConnectionError: If connection to OceanBase fails.
         """
         host = self.connection_args.get("host", "localhost")
         port = self.connection_args.get("port", "2881")
@@ -221,13 +228,25 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         password = self.connection_args.get("password", "")
         db_name = self.connection_args.get("db_name", "test")
 
-        self.obvector: ObVecClient = ObVecClient(
-            uri=f"{host}:{port}",
-            user=user,
-            password=password,
-            db_name=db_name,
-            **kwargs,
-        )
+        try:
+            self.obvector: ObVecClient = ObVecClient(
+                uri=f"{host}:{port}",
+                user=user,
+                password=password,
+                db_name=db_name,
+                **kwargs,
+            )
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "connect" in error_msg or "refused" in error_msg or "timeout" in error_msg:
+                raise OceanBaseConnectionError(
+                    f"Failed to connect to OceanBase: {e}",
+                    host=host,
+                    port=port,
+                ) from e
+            # Re-raise other exceptions as-is
+            logger.error(f"Failed to create OceanBase client: {e}")
+            raise
 
     @contextmanager
     def _cursor(self) -> Iterator[Connection]:
