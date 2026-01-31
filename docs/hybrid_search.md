@@ -55,7 +55,7 @@ from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 # Connection configuration
 connection_args = {
     "host": "127.0.0.1",
-    "port": "2881", 
+    "port": "2881",
     "user": "root@test",
     "password": "",
     "db_name": "test",
@@ -333,4 +333,3 @@ results = vector_store.advanced_hybrid_search(
 ```
 
 This makes it ideal for applications requiring both semantic understanding and precise keyword matching, such as academic paper search, product catalogs, and knowledge bases.
-
