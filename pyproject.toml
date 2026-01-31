@@ -19,7 +19,7 @@ disallow_untyped_defs = "True"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-langchain-core = ">=1.0.0"
+langchain-core = "^0.3.0"
 pyseekdb = ">=0.1.0"
 pyobvector = ">=0.2.0"
 
