@@ -1,5 +1,10 @@
 # langchain-oceanbase
 
+[![CI](https://github.com/oceanbase/langchain-oceanbase/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanbase/langchain-oceanbase/actions/workflows/ci.yml)
+[![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
+[![Python Version](https://img.shields.io/pypi/pyversions/langchain-oceanbase.svg)](https://pypi.org/project/langchain-oceanbase/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This package contains the LangChain integration with OceanBase.
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
@@ -176,3 +181,143 @@ for doc in results:
 - [**Maximal Marginal Relevance**](./docs/vectorstores.md#maximal-marginal-relevance) - Filter for diversity in search results
 - [**Multiple Index Types**](./docs/vectorstores.md#multiple-index-types) - Different vector index types (HNSW, IVF, FLAT)
 
+## Troubleshooting
+
+### Connection Refused
+
+**Error**: `Can't connect to MySQL server on 'localhost'` or `ConnectionRefusedError`
+
+**Cause**: OceanBase is not running or not accessible on the specified host/port.
+
+**Solution**:
+1. Check if OceanBase is running:
+   ```bash
+   docker ps | grep oceanbase
+   ```
+2. Start OceanBase if not running:
+   ```bash
+   docker start oceanbase
+   ```
+3. Verify the port is correct (default: 2881 for local, 3306 for cloud)
+4. Check firewall settings if connecting to remote server
+
+### Vector Dimension Mismatch
+
+**Error**: `Vector dimension mismatch` or `OceanBaseVectorDimensionError`
+
+**Cause**: The embedding model's output dimension doesn't match the table's vector dimension.
+
+**Solution**:
+1. Check your embedding model's output dimension (e.g., `all-MiniLM-L6-v2` outputs 384 dimensions)
+2. Set the correct `embedding_dim` parameter when initializing `OceanbaseVectorStore`
+3. If the embedding model changed, recreate the table with `drop_old=True`:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       embedding_function=new_embedding,
+       embedding_dim=new_dim,
+       drop_old=True,  # Recreate table with new dimension
+       ...
+   )
+   ```
+
+### Index Creation Failed
+
+**Error**: `Failed to create index` or `OceanBaseIndexError`
+
+**Cause**: Insufficient memory, incompatible OceanBase version, or invalid index parameters.
+
+**Solution**:
+1. Check available memory on your OceanBase server
+2. Verify OceanBase version supports the index type:
+   - HNSW: OceanBase 4.3.0+
+   - IVF variants: OceanBase 4.3.0+
+3. Try a simpler index type for small datasets:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       index_type="FLAT",  # No index, exact search
+       ...
+   )
+   ```
+4. For HNSW, reduce `M` parameter if memory is limited:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       index_type="HNSW",
+       vidx_algo_params={"M": 8, "efConstruction": 100},
+       ...
+   )
+   ```
+
+### AI Functions Not Supported
+
+**Error**: `AI functions are not supported` or `OceanBaseVersionError`
+
+**Cause**: OceanBase version is older than 4.4.1, which is required for AI functions.
+
+**Solution**:
+1. Upgrade to OceanBase 4.4.1 or later:
+   ```bash
+   docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 \
+       -p 2881:2881 -d oceanbase/oceanbase-ce:4.4.1.0-100000032025101610
+   ```
+2. Alternatively, use SeekDB which also supports AI functions
+3. Check current version:
+   ```sql
+   SELECT version();
+   ```
+
+### Slow Queries
+
+**Cause**: Missing vector index, wrong index type, or suboptimal search parameters.
+
+**Solution**:
+1. Ensure a vector index is created (check with `SHOW INDEX FROM table_name`)
+2. Use appropriate index type:
+   - **HNSW**: Best for large datasets with high recall requirements
+   - **IVF_FLAT**: Good balance of speed and accuracy
+   - **FLAT**: Best accuracy but slowest (no index)
+3. Tune search parameters for HNSW:
+   ```python
+   # Higher efSearch = better accuracy but slower
+   vector_store.hnsw_ef_search = 128  # Default is 64
+   ```
+4. For IVF indexes, adjust `nprobe` parameter
+
+### Sparse Vector / Full-text Search Not Working
+
+**Error**: `Sparse vector support not enabled` or `Full-text search support not enabled`
+
+**Cause**: The vector store was not initialized with sparse/fulltext support.
+
+**Solution**:
+```python
+# Enable sparse vector support
+vector_store = OceanbaseVectorStore(
+    include_sparse=True,
+    ...
+)
+
+# Enable both sparse and full-text search
+vector_store = OceanbaseVectorStore(
+    include_sparse=True,
+    include_fulltext=True,
+    ...
+)
+```
+
+Note: Full-text search requires `include_sparse=True` to be set as well.
+
+### Import Errors
+
+**Error**: `ModuleNotFoundError: No module named 'pyobvector'`
+
+**Cause**: Required dependencies are not installed.
+
+**Solution**:
+```bash
+pip install -U langchain-oceanbase pyobvector
+```
+
+For AI functions support:
+```bash
+pip install -U langchain-oceanbase pyobvector langgraph-checkpoint
+```

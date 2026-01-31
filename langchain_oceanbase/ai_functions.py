@@ -18,6 +18,10 @@ from typing import Any, Dict, List, Optional
 from pyobvector import ObVecClient
 from sqlalchemy import text
 
+from langchain_oceanbase.exceptions import (
+    OceanBaseConfigurationError,
+    OceanBaseVersionError,
+)
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 logger = logging.getLogger(__name__)
@@ -198,8 +202,8 @@ class OceanBaseAIFunctions:
     def __init__(
         self,
         connection_args: Optional[Dict[str, Any]] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """Initialize the OceanBase AI functions client.
 
         Args:
@@ -224,9 +228,9 @@ class OceanBaseAIFunctions:
         assert self.obvector is not None
 
         if not _check_ai_function_support(self.obvector):
-            raise ValueError(
-                "AI functions are only supported in OceanBase 4.4.1+ or SeekDB. "
-                "Please upgrade your database or use SeekDB."
+            raise OceanBaseVersionError(
+                feature="AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)",
+                required_version="4.4.1",
             )
 
     def _create_client(self, **kwargs: Any) -> None:
@@ -366,14 +370,20 @@ class OceanBaseAIFunctions:
                 except Exception as e:
                     error_msg = str(e).lower()
                     if "required" in error_msg or "parameter" in error_msg:
-                        raise ValueError(
-                            "model_name is required for AI_EMBED. "
-                            "Please provide a model name."
+                        raise OceanBaseConfigurationError(
+                            "model_name is required for AI_EMBED function. "
+                            "Example: ai_embed('text', model_name='your_model_name'). "
+                            "Configure models using create_ai_model() first.",
+                            parameter="model_name",
                         ) from e
                     raise
 
                 if embedding is None:
-                    raise ValueError("Failed to generate embedding")
+                    raise OceanBaseConfigurationError(
+                        "AI_EMBED returned no result. "
+                        "Check that the model is properly configured and the input text is valid. "
+                        "Use list_ai_models() to verify available models."
+                    )
 
                 # Parse JSON string if needed
                 if isinstance(embedding, str):
@@ -469,14 +479,20 @@ class OceanBaseAIFunctions:
                 except Exception as e:
                     error_msg = str(e).lower()
                     if "required" in error_msg or "parameter" in error_msg:
-                        raise ValueError(
-                            "model_name is required for AI_COMPLETE. "
-                            "Please provide a model name."
+                        raise OceanBaseConfigurationError(
+                            "model_name is required for AI_COMPLETE function. "
+                            "Example: ai_complete('prompt', model_name='your_model_name'). "
+                            "Configure models using create_ai_model() first.",
+                            parameter="model_name",
                         ) from e
                     raise
 
             if completion is None:
-                raise ValueError("Failed to generate completion")
+                raise OceanBaseConfigurationError(
+                    "AI_COMPLETE returned no result. "
+                    "Check that the model is properly configured and the prompt is valid. "
+                    "Use list_ai_models() to verify available models."
+                )
             return completion
         except Exception as e:
             logger.error(f"Failed to generate completion: {e}")
@@ -534,8 +550,11 @@ class OceanBaseAIFunctions:
                 return []
 
             if not model_name:
-                raise ValueError(
-                    "model_name is required for AI_RERANK. Please provide a model name."
+                raise OceanBaseConfigurationError(
+                    "model_name is required for AI_RERANK function. "
+                    "Example: ai_rerank('query', documents, model_name='your_rerank_model'). "
+                    "Configure rerank models using create_ai_model() first.",
+                    parameter="model_name",
                 )
 
             escaped_query = self._escape_sql_string(query)
@@ -560,6 +579,8 @@ class OceanBaseAIFunctions:
                     )
                     parsed_result = self._parse_rerank_result(scores_json, documents)
                     return self._format_rerank_results(parsed_result, top_k)
+                # If scores_json is None, fall through to individual rerank
+                return self._rerank_individual(query, documents, model_name, top_k)
             except Exception as batch_error:
                 logger.warning(
                     f"Batch rerank failed, trying individual rerank: {batch_error}"
