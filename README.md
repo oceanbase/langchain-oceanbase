@@ -13,6 +13,18 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
+## LangChain Integration
+
+[![LangChain](https://img.shields.io/badge/LangChain-Integration-blue)](https://python.langchain.com/docs/integrations/vectorstores/oceanbase/)
+
+`OceanbaseVectorStore` is the official LangChain integration for OceanBase.
+
+Support for `ChatMessageHistory` is provided as an additional integration and is not part of the official VectorStore API.
+
+Official documentation:
+https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
+
+
 ## Features
 
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
