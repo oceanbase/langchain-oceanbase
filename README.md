@@ -188,3 +188,84 @@ for doc in results:
 - [**Maximal Marginal Relevance**](./docs/vectorstores.md#maximal-marginal-relevance) - Filter for diversity in search results
 - [**Multiple Index Types**](./docs/vectorstores.md#multiple-index-types) - Different vector index types (HNSW, IVF, FLAT)
 
+## Quickstart
+
+A short quickstart to run the local dev environment and example scripts.
+
+Prerequisites:
+- Git
+- Docker & Docker Compose
+- Python 3.10+
+- (Optional) OpenAI API key for embeddings / LLM examples
+
+1. Clone the repo
+```bash
+git clone https://github.com/oceanbase/langchain-oceanbase.git
+cd langchain-oceanbase
+```
+
+2. Start the local database
+```bash
+# start OceanBase
+make docker-up
+
+# or start SeekDB (lightweight alternative)
+make docker-up-seek
+```
+
+3. Set environment variables (create a `.env` file or export them)
+```
+OB_HOST=127.0.0.1
+OB_PORT=3306
+OB_USER=root
+OB_PASSWORD=changeme
+OB_DB=langchain_ob_demo
+OPENAI_API_KEY=sk-...
+```
+
+4. Install example dependencies (examples use these packages)
+```bash
+pip install openai mysql-connector-python numpy
+```
+
+5. Run an example
+```bash
+python examples/quickstart.py
+python examples/rag_demo.py
+python examples/hybrid_search_demo.py
+```
+
+## Files of interest
+
+- `docker-compose.yml` — OceanBase CE service for local development
+- `docker-compose.seekdb.yml` — SeekDB lightweight alternative
+- `Makefile` — convenience targets: `make docker-up`, `make docker-down`, `make docker-logs`, plus format/lint/typecheck/test helpers
+- `CONTRIBUTING.md` — developer setup, running tests, code style, PR process
+- `examples/` — `quickstart.py`, `rag_demo.py`, `hybrid_search_demo.py`, and `examples/README.md`
+
+## Running tests and linters
+
+- Unit tests:
+```bash
+pytest tests/unit
+```
+
+- Integration tests (requires Docker services):
+```bash
+make docker-up
+pytest tests/integration
+```
+
+- Lint / formatting:
+```bash
+make fmt
+make lint
+make typecheck
+```
+
+## Contributing
+
+See `CONTRIBUTING.md` for detailed developer setup and the PR process. When submitting a PR, please:
+- Base your branch on `main`
+- Reference the issue (e.g., `Closes #43`) in the PR body
+- Run linters and tests locally
