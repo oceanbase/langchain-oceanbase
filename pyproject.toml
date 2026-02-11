@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "langchain-oceanbase"
-version = "0.3.2"
+version = "0.2.1"
 description = "An integration package connecting OceanBase and LangChain"
 authors = ["shanhaikang.shk <shanhaikang.shk@oceanbase.com>"]
 readme = "README.md"
@@ -18,10 +18,9 @@ disallow_untyped_defs = "True"
 "Release Notes" = "https://github.com/langchain-ai/langchain/releases?q=tag%3A%22oceanbase%3D%3D0%22&expanded=true"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-langchain-core = "^0.3.0"
-pyseekdb = ">=0.1.0"
-pyobvector = ">=0.2.0"
+python = ">=3.9,<4.0"
+langchain-core = "^0.3.15"
+pyobvector = ">=0.2.0,<0.3.0"
 langgraph = { version = ">=0.2.16", optional = true }
 
 [tool.poetry.extras]
@@ -29,7 +28,6 @@ langgraph = ["langgraph"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
-ignore = ["E501"]  # Allow long lines in docstrings
 
 [tool.coverage.run]
 omit = ["tests/*"]
@@ -64,7 +62,7 @@ pytest = "^7.4.3"
 pytest-asyncio = "^0.23.2"
 pytest-socket = "^0.7.0"
 pytest-watcher = "^0.3.4"
-langchain-tests = "==0.3.5"
+langchain-tests = "^0.3.5"
 langchain-community = "^0.3.12"
 dashscope = "^1.20.14"
 
