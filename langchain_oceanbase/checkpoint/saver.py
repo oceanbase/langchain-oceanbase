@@ -5,13 +5,20 @@ import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.base import (
-    BaseCheckpointSaver,
-    ChannelVersions,
-    Checkpoint,
-    CheckpointMetadata,
-    CheckpointTuple,
-)
+try:
+    from langgraph.checkpoint.base import (
+        BaseCheckpointSaver,
+        ChannelVersions,
+        Checkpoint,
+        CheckpointMetadata,
+        CheckpointTuple,
+    )
+except ImportError:
+    BaseCheckpointSaver = None
+    ChannelVersions = None
+    Checkpoint = None
+    CheckpointMetadata = None
+    CheckpointTuple = None
 from pyobvector import ObVecClient
 from sqlalchemy import JSON, BLOB, Column, String, Text
 
@@ -20,6 +27,8 @@ from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 class OceanBaseSaver(BaseCheckpointSaver):
     """A checkpoint saver that stores checkpoints in an OceanBase database.
+
+    Requires langgraph to be installed. Use: pip install langchain-oceanbase[langgraph]
 
     Args:
         connection_args (Dict[str, Any]): Connection arguments for OceanBase.
@@ -34,6 +43,11 @@ class OceanBaseSaver(BaseCheckpointSaver):
         writes_table_name: str = "langchain_checkpoint_writes",
         **kwargs: Any,
     ) -> None:
+        if BaseCheckpointSaver is None:
+            raise ImportError(
+                "langgraph is required for OceanBaseSaver. "
+                "Install it with: pip install langchain-oceanbase[langgraph]"
+            )
         super().__init__()
         self.connection_args = (
             connection_args if connection_args is not None else DEFAULT_OCEANBASE_CONNECTION
