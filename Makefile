@@ -19,6 +19,10 @@ test_watch:
 integration_test integration_tests:
 	poetry run pytest $(TEST_FILE)
 
+# comprehensive tests run the unified test suite
+comprehensive_test comprehensive_tests:
+	poetry run python tests/test_comprehensive.py
+
 ######################
 # LINTING AND FORMATTING
 ######################
@@ -61,4 +65,57 @@ help:
 	@echo 'lint                         - run linters'
 	@echo 'test                         - run unit tests'
 	@echo 'tests                        - run unit tests'
+	@echo 'integration_test             - run integration tests'
+	@echo 'comprehensive_test           - run comprehensive tests (CI, compatibility, integration)'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
+
+
+# ---- onboarding additions start ----
+.PHONY: help docker-up docker-up-seek docker-down docker-down-seek docker-logs docker-logs-seek \
+        fmt lint typecheck test
+
+help:
+	@echo "Usage:"
+	@echo "  make docker-up          Start OceanBase (docker-compose.yml)"
+	@echo "  make docker-up-seek     Start SeekDB (docker-compose.seekdb.yml)"
+	@echo "  make docker-down        Stop OceanBase and remove volumes"
+	@echo "  make docker-down-seek   Stop SeekDB and remove volumes"
+	@echo "  make docker-logs        Follow OceanBase logs"
+	@echo "  make docker-logs-seek   Follow SeekDB logs"
+	@echo "  make fmt                Format code with black"
+	@echo "  make lint               Run ruff linter"
+	@echo "  make typecheck          Run mypy type checks"
+	@echo "  make test               Run pytest"
+
+# Docker-compose management
+docker-up:
+	docker-compose -f docker-compose.yml up -d
+
+docker-up-seek:
+	docker-compose -f docker-compose.seekdb.yml up -d
+
+docker-down:
+	docker-compose -f docker-compose.yml down -v
+
+docker-down-seek:
+	docker-compose -f docker-compose.seekdb.yml down -v
+
+docker-logs:
+	docker-compose -f docker-compose.yml logs -f
+
+docker-logs-seek:
+	docker-compose -f docker-compose.seekdb.yml logs -f
+
+# Development helpers (only active if these tools are in your toolchain)
+fmt:
+	black .
+
+lint:
+	ruff check .
+
+typecheck:
+	mypy .
+
+test:
+	pytest -q
+# ---- onboarding additions end ----
