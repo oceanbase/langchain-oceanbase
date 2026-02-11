@@ -21,10 +21,6 @@ disallow_untyped_defs = "True"
 python = ">=3.9,<4.0"
 langchain-core = "^0.3.15"
 pyobvector = ">=0.2.0,<0.3.0"
-langgraph = { version = ">=0.2.16", optional = true }
-
-[tool.poetry.extras]
-langgraph = ["langgraph"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
