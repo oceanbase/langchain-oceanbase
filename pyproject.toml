@@ -64,6 +64,8 @@ optional = true
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
 pre-commit = "^3.7"
+# Pin to safe version for security (Dependabot security advisory); also makes it a direct dep so Dependabot can update
+virtualenv = ">=20.36.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.3"
