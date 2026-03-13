@@ -5,10 +5,7 @@ Combines CI tests, compatibility tests, and integration tests
 """
 
 import importlib
-import os
 import sys
-import time
-from typing import Any, Dict, List
 
 
 def test_imports() -> bool:
@@ -54,7 +51,7 @@ def test_version_compatibility() -> bool:
                 current_parts = [int(x) for x in current.split(".")]
                 min_parts = [int(x) for x in minimum.split(".")]
                 return current_parts >= min_parts
-            except:
+            except (ValueError, AttributeError):
                 return True  # If we can't parse, assume it's OK
 
         if not version_ok(langchain_core.__version__, min_core_version):
@@ -111,13 +108,13 @@ def test_basic_functionality() -> bool:
     print("=" * 60)
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
         from langchain_core.documents import Document
 
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        # Create fake embeddings
-        embeddings = FakeEmbeddings(size=6)
+        # Create embeddings using DefaultEmbeddingFunctionAdapter
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         # CI OceanBase configuration
         connection_args = {
@@ -142,7 +139,7 @@ def test_basic_functionality() -> bool:
                     connection_args=connection_args,
                     vidx_metric_type="l2",
                     drop_old=True,
-                    embedding_dim=6,
+                    embedding_dim=384,
                     index_type=index_type,
                 )
 
@@ -210,12 +207,12 @@ def test_metric_types() -> bool:
     print("\nTesting metric types...")
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
         from langchain_core.documents import Document
 
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        embeddings = FakeEmbeddings(size=6)
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         connection_args = {
             "host": "127.0.0.1",
@@ -237,7 +234,7 @@ def test_metric_types() -> bool:
                     connection_args=connection_args,
                     vidx_metric_type=metric_type,
                     drop_old=True,
-                    embedding_dim=6,
+                    embedding_dim=384,
                 )
 
                 documents = [
@@ -247,8 +244,8 @@ def test_metric_types() -> bool:
                     ),
                 ]
 
-                ids = vectorstore.add_documents(documents)
-                results = vectorstore.similarity_search("Test", k=1)
+                vectorstore.add_documents(documents)
+                vectorstore.similarity_search("Test", k=1)
                 print(f"    ✓ {metric_type} metric test passed")
 
             except Exception as e:
@@ -267,11 +264,10 @@ def test_from_texts() -> bool:
     print("\nTesting from_texts method...")
 
     try:
-        from langchain_community.embeddings import FakeEmbeddings
-
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        embeddings = FakeEmbeddings(size=6)
+        embeddings = DefaultEmbeddingFunctionAdapter()
 
         connection_args = {
             "host": "127.0.0.1",
@@ -296,13 +292,13 @@ def test_from_texts() -> bool:
             connection_args=connection_args,
             vidx_metric_type="l2",
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
         )
 
         print("✓ from_texts method successful")
 
         # Test search
-        results = vectorstore.similarity_search("First", k=1)
+        vectorstore.similarity_search("First", k=1)
         print("✓ Search after from_texts successful")
 
         return True

@@ -295,4 +295,3 @@ for i, doc in enumerate(results, 1):
 - Requires `pyseekdb` package to be installed
 - Model files will be downloaded on first use (approximately 80MB)
 - For production environments, consider using more powerful embedding models (e.g., OpenAI, DashScope, etc.)
-

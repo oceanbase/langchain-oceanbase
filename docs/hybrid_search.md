@@ -42,27 +42,27 @@ tmp_client.perform_raw_text_sql("ALTER SYSTEM ob_vector_memory_limit_percentage 
 
 ## Initialization
 
-Configure the embedding model and initialize the OceanBase vector store with hybrid search capabilities. Here we use `FakeEmbeddings` for demonstration purposes:
+Configure the embedding model and initialize the OceanBase vector store with hybrid search capabilities. Here we use `DefaultEmbeddingFunctionAdapter` for demonstration purposes:
 
 
 
 ```python
 import os
-from langchain_community.embeddings import FakeEmbeddings
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_core.documents import Document
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
 # Connection configuration
 connection_args = {
     "host": "127.0.0.1",
-    "port": "2881", 
+    "port": "2881",
     "user": "root@test",
     "password": "",
     "db_name": "test",
 }
 
-# Initialize embeddings (using FakeEmbeddings for demo)
-embeddings = FakeEmbeddings(size=384)
+# Initialize embeddings (using DefaultEmbeddingFunctionAdapter for demo)
+embeddings = DefaultEmbeddingFunctionAdapter()
 
 # Create vector store with hybrid search capabilities
 vector_store = OceanbaseVectorStore(
@@ -333,4 +333,3 @@ results = vector_store.advanced_hybrid_search(
 ```
 
 This makes it ideal for applications requiring both semantic understanding and precise keyword matching, such as academic paper search, product catalogs, and knowledge bases.
-

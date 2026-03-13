@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests integration_tests docker_tests help extended_tests
+.PHONY: all format lint test tests integration_tests docker_tests help extended_tests install-hooks test-coverage
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -55,16 +55,36 @@ check_imports: $(shell find langchain_oceanbase -name '*.py')
 	poetry run python ./scripts/check_imports.py $^
 
 ######################
+# PRE-COMMIT HOOKS
+######################
+
+install-hooks:
+	poetry run pre-commit install
+
+run-hooks:
+	poetry run pre-commit run --all-files
+
+######################
+# TEST COVERAGE
+######################
+
+test-coverage:
+	poetry run pytest --cov=langchain_oceanbase --cov-report=html --cov-report=term-missing tests/unit_tests/
+
+######################
 # HELP
 ######################
 
 help:
 	@echo '----'
-	@echo 'check_imports				- check imports'
+	@echo 'check_imports                - check imports'
 	@echo 'format                       - run code formatters'
 	@echo 'lint                         - run linters'
 	@echo 'test                         - run unit tests'
 	@echo 'tests                        - run unit tests'
+	@echo 'test-coverage                - run unit tests with coverage report'
 	@echo 'integration_test             - run integration tests'
 	@echo 'comprehensive_test           - run comprehensive tests (CI, compatibility, integration)'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
+	@echo 'install-hooks                - install pre-commit hooks'
+	@echo 'run-hooks                    - run pre-commit hooks on all files'

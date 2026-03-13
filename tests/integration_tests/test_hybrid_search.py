@@ -13,12 +13,11 @@ This module contains comprehensive tests for the hybrid search features includin
 
 import os
 import time
-from typing import Any, Dict, List
 
 import pytest
-from langchain_community.embeddings import FakeEmbeddings
 from langchain_core.documents import Document
 
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
 
@@ -39,7 +38,7 @@ class TestHybridSearch:
     @pytest.fixture
     def embeddings(self):
         """Standard embeddings for testing."""
-        return FakeEmbeddings(size=6)
+        return DefaultEmbeddingFunctionAdapter()
 
     @pytest.fixture
     def hybrid_vectorstore(self, connection_args, embeddings):
@@ -53,7 +52,7 @@ class TestHybridSearch:
             include_sparse=True,
             include_fulltext=True,
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
         )
 
     @pytest.fixture
@@ -304,7 +303,7 @@ class TestHybridSearch:
             include_sparse=False,
             include_fulltext=False,
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
             index_type="FLAT",
         )
 
@@ -323,7 +322,7 @@ class TestHybridSearch:
             include_sparse=False,
             include_fulltext=False,
             drop_old=True,
-            embedding_dim=6,
+            embedding_dim=384,
             index_type="FLAT",
         )
 
@@ -353,7 +352,6 @@ class TestHybridSearch:
         results = hybrid_vectorstore.similarity_search("test document", k=2)
         assert len(results) >= 1
         assert all(isinstance(doc, Document) for doc in results)
-
 
     def test_comprehensive_hybrid_search_workflow(
         self,

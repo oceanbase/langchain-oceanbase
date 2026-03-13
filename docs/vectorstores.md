@@ -53,17 +53,16 @@ tmp_client.perform_raw_text_sql("ALTER SYSTEM ob_vector_memory_limit_percentage 
 
 ## Initialization
 
-Configure the API key of the embedded model. Here we use `DashScopeEmbeddings` as an example. When deploying `Oceanbase` with a Docker image as described above, simply follow the script below to set the `host`, `port`, `user`, `password`, and `database name`. For other deployment methods, set these parameters according to the actual situation.
-%pip install dashscope
+Configure the embedded model. Here we use `DefaultEmbeddingFunctionAdapter` as an example. When deploying `Oceanbase` with a Docker image as described above, simply follow the script below to set the `host`, `port`, `user`, `password`, and `database name`. For other deployment methods, set these parameters according to the actual situation.
 
 ```python
 import os
 
-from langchain_community.embeddings import DashScopeEmbeddings
+from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-DASHSCOPE_API = os.environ.get("DASHSCOPE_API_KEY", "")
+
 connection_args = {
     "host": "127.0.0.1",
     "port": "2881",
@@ -72,9 +71,7 @@ connection_args = {
     "db_name": "test",
 }
 
-embeddings = DashScopeEmbeddings(
-    model="your-embedding-model", dashscope_api_key=DASHSCOPE_API
-)
+embeddings = DefaultEmbeddingFunctionAdapter()
 
 vector_store = OceanbaseVectorStore(
     embedding_function=embeddings,
@@ -151,7 +148,7 @@ vector_store.delete(ids=["3"])
 
 ## Query vector store
 
-Once your vector store has been created and the relevant documents have been added you will most likely wish to query it during the running of your chain or agent. 
+Once your vector store has been created and the relevant documents have been added you will most likely wish to query it during the running of your chain or agent.
 
 ### Query directly
 
@@ -177,7 +174,7 @@ results = vector_store.similarity_search_with_score(query="thud",k=1,filter={"so
 
 ### Query by turning into retriever
 
-You can also transform the vector store into a retriever for easier usage in your chains. 
+You can also transform the vector store into a retriever for easier usage in your chains.
 
 
 ```python
@@ -295,7 +292,7 @@ fulltext_vectorstore.add_documents_with_fulltext(fulltext_documents)
 
 # Perform full-text search
 fulltext_results = fulltext_vectorstore.similarity_search_with_fulltext(
-    query="programming language", 
+    query="programming language",
     k=2
 )
 print("Full-text search results:")
@@ -417,7 +414,7 @@ index_types = ["HNSW", "IVF", "FLAT"]
 
 for index_type in index_types:
     print(f"\n=== Testing {index_type} Index ===")
-    
+
     # Create vector store with specific index type
     test_vectorstore = OceanbaseVectorStore(
         embedding_function=embeddings,
@@ -427,7 +424,7 @@ for index_type in index_types:
         index_type=index_type,
         drop_old=True,
     )
-    
+
     # Add test documents
     test_docs = [
         "This is a test document for index performance comparison",
@@ -435,13 +432,13 @@ for index_type in index_types:
         "HNSW is good for high-dimensional vectors, IVF for large datasets"
     ]
     test_vectorstore.add_texts(test_docs)
-    
+
     # Test search performance
     results = test_vectorstore.similarity_search("vector search", k=2)
     print(f"Search results with {index_type}:")
     for doc in results:
         print(f"- {doc.page_content}")
-    
+
     # Clean up
     test_vectorstore.delete_table()
 
