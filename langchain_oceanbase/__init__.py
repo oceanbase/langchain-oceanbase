@@ -25,6 +25,16 @@ try:
 except ImportError:
     OceanBaseCheckpointSaver = None  # type: ignore
 
+# Custom exceptions - always available
+from langchain_oceanbase.exceptions import (
+    OceanBaseConfigurationError,
+    OceanBaseConnectionError,
+    OceanBaseError,
+    OceanBaseIndexError,
+    OceanBaseVectorDimensionError,
+    OceanBaseVersionError,
+)
+
 try:
     __version__ = metadata.version(__package__)
 except metadata.PackageNotFoundError:
@@ -32,10 +42,19 @@ except metadata.PackageNotFoundError:
 del metadata
 
 __all__ = [
+    # Core classes
     "OceanbaseVectorStore",
     "OceanBaseChatMessageHistory",
     "OceanBaseAIFunctions",
     "OceanBaseCheckpointSaver",
     "DefaultEmbeddingFunction",
+    # Exceptions
+    "OceanBaseError",
+    "OceanBaseConnectionError",
+    "OceanBaseVectorDimensionError",
+    "OceanBaseIndexError",
+    "OceanBaseVersionError",
+    "OceanBaseConfigurationError",
+    # Version
     "__version__",
 ]

@@ -3,7 +3,16 @@ __pycache__
 .pytest_cache
 .ruff_cache
 
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+
 # IDE's
 .vscode/
 .cursor/
 .idea/
+.worktrees/
