@@ -36,6 +36,11 @@ from langchain_oceanbase.exceptions import (
 )
 
 try:
+    from langchain_oceanbase.checkpoint.saver import OceanBaseSaver
+except ImportError:
+    OceanBaseSaver = None  # type: ignore
+
+try:
     __version__ = metadata.version(__package__)
 except metadata.PackageNotFoundError:
     __version__ = ""
