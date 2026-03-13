@@ -26,6 +26,8 @@ langgraph = ">=0.2.0,<1.0.0"
 langgraph-checkpoint = ">=2.1.0,<5.0.0"
 pyseekdb = ">=0.1.0"
 pyobvector = ">=0.2.0"
+# Pin to safe version for security (CVE-2025-69228 etc.); direct dep so Dependabot can update
+aiohttp = ">=3.13.3"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
