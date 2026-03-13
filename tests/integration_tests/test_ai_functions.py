@@ -31,9 +31,7 @@ project_root = os.path.dirname(
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from langchain_oceanbase.ai_functions import (  # noqa: E402
-    OceanBaseAIFunctions,
-)
+from langchain_oceanbase.ai_functions import OceanBaseAIFunctions
 
 # Database configuration
 connection_args = {
@@ -108,7 +106,7 @@ def step_1_create_models(ai_functions: OceanBaseAIFunctions) -> bool:
         try:
             ai_functions.drop_ai_model(MODEL_CONFIG["embed_model"])
             print(f"  ℹ️  Deleted existing model {MODEL_CONFIG['embed_model']}")
-        except Exception:
+        except:
             pass
 
         ai_functions.create_ai_model(
@@ -132,7 +130,7 @@ def step_1_create_models(ai_functions: OceanBaseAIFunctions) -> bool:
         try:
             ai_functions.drop_ai_model(MODEL_CONFIG["complete_model"])
             print(f"  ℹ️  Deleted existing model {MODEL_CONFIG['complete_model']}")
-        except Exception:
+        except:
             pass
 
         ai_functions.create_ai_model(
@@ -188,7 +186,7 @@ def step_3_configure_endpoints(ai_functions: OceanBaseAIFunctions) -> bool:
         try:
             ai_functions.drop_ai_model_endpoint("embedding_endpoint")
             print("  ℹ️  Deleted existing endpoint embedding_endpoint")
-        except Exception:
+        except:
             pass
 
         # Create endpoint for the existing model
@@ -213,7 +211,7 @@ def step_3_configure_endpoints(ai_functions: OceanBaseAIFunctions) -> bool:
         try:
             ai_functions.drop_ai_model_endpoint("complete_endpoint")
             print("  ℹ️  Deleted existing endpoint complete_endpoint")
-        except Exception:
+        except:
             pass
 
         # Create endpoint for the existing model
@@ -324,7 +322,7 @@ def step_7_test_complete(ai_functions: OceanBaseAIFunctions) -> bool:
         print("  ⚠️  Skipping AI_COMPLETE test: Using placeholder configuration")
         print("  ℹ️  Set real API credentials in MODEL_CONFIG to run this test")
         return True  # Return True to count as passed (skipped)
-
+    
     try:
         completion = ai_functions.ai_complete(
             prompt="Explain what machine learning is in one sentence",
@@ -333,7 +331,7 @@ def step_7_test_complete(ai_functions: OceanBaseAIFunctions) -> bool:
         assert completion is not None
         assert isinstance(completion, str)
         assert len(completion) > 0
-        print("  Prompt: Explain what machine learning is in one sentence")
+        print(f"  Prompt: Explain what machine learning is in one sentence")
         print(f"  Completion: {completion[:200]}...")
         return True
     except Exception as e:
@@ -347,7 +345,7 @@ def step_8_test_embed(ai_functions: OceanBaseAIFunctions) -> bool:
         print("  ⚠️  Skipping AI_EMBED test: Using placeholder configuration")
         print("  ℹ️  Set real API credentials in MODEL_CONFIG to run this test")
         return True  # Return True to count as passed (skipped)
-
+    
     try:
         vector = ai_functions.ai_embed(
             text="Test text: Machine learning is a subset of artificial intelligence",
@@ -357,7 +355,7 @@ def step_8_test_embed(ai_functions: OceanBaseAIFunctions) -> bool:
         assert isinstance(vector, list)
         assert len(vector) > 0
         print(
-            "  Text: Test text: Machine learning is a subset of artificial intelligence"
+            f"  Text: Test text: Machine learning is a subset of artificial intelligence"
         )
         print(f"  Vector dimension: {len(vector)}")
         print(f"  First 5 values: {vector[:5]}")
@@ -373,7 +371,7 @@ def step_9_test_rerank(ai_functions: OceanBaseAIFunctions) -> bool:
         print("  ⚠️  Skipping AI_RERANK test: Using placeholder configuration")
         print("  ℹ️  Set real API credentials in MODEL_CONFIG to run this test")
         return True  # Return True to count as passed (skipped)
-
+    
     try:
         query = "machine learning algorithms"
         documents = [
@@ -415,10 +413,10 @@ def main():
     print("=" * 80)
     print("🧪 Complete AI Functions Test Following Operational Steps")
     print("=" * 80)
-    print("\nDatabase configuration:")
+    print(f"\nDatabase configuration:")
     print(f"  Host: {connection_args['host']}:{connection_args['port']}")
     print(f"  Database: {connection_args['db_name']}")
-    print("\nModel configuration:")
+    print(f"\nModel configuration:")
     print(f"  URL: {MODEL_CONFIG['url']}")
     print(f"  Embed model: {MODEL_CONFIG['embed_model']}")
     print(f"  Complete model: {MODEL_CONFIG['complete_model']}")

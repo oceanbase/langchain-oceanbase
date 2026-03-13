@@ -5,7 +5,10 @@ Combines CI tests, compatibility tests, and integration tests
 """
 
 import importlib
+import os
 import sys
+import time
+from typing import Any, Dict, List
 
 
 def test_imports() -> bool:
@@ -51,7 +54,7 @@ def test_version_compatibility() -> bool:
                 current_parts = [int(x) for x in current.split(".")]
                 min_parts = [int(x) for x in minimum.split(".")]
                 return current_parts >= min_parts
-            except (ValueError, AttributeError):
+            except:
                 return True  # If we can't parse, assume it's OK
 
         if not version_ok(langchain_core.__version__, min_core_version):
@@ -110,8 +113,8 @@ def test_basic_functionality() -> bool:
     try:
         from langchain_core.documents import Document
 
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
         # Create embeddings using DefaultEmbeddingFunctionAdapter
         embeddings = DefaultEmbeddingFunctionAdapter()
@@ -209,8 +212,8 @@ def test_metric_types() -> bool:
     try:
         from langchain_core.documents import Document
 
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
         embeddings = DefaultEmbeddingFunctionAdapter()
 
@@ -244,8 +247,8 @@ def test_metric_types() -> bool:
                     ),
                 ]
 
-                vectorstore.add_documents(documents)
-                vectorstore.similarity_search("Test", k=1)
+                ids = vectorstore.add_documents(documents)
+                results = vectorstore.similarity_search("Test", k=1)
                 print(f"    ✓ {metric_type} metric test passed")
 
             except Exception as e:
@@ -264,8 +267,8 @@ def test_from_texts() -> bool:
     print("\nTesting from_texts method...")
 
     try:
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 
         embeddings = DefaultEmbeddingFunctionAdapter()
 
@@ -298,7 +301,7 @@ def test_from_texts() -> bool:
         print("✓ from_texts method successful")
 
         # Test search
-        vectorstore.similarity_search("First", k=1)
+        results = vectorstore.similarity_search("First", k=1)
         print("✓ Search after from_texts successful")
 
         return True

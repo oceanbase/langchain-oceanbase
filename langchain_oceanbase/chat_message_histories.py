@@ -94,8 +94,8 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
         self,
         table_name: str = DEFAULT_OCEANBASE_CHAT_MESSAGE_TABLE_NAME,
         connection_args: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> None:
+        **kwargs,
+    ):
         """Initialize the OceanBase chat message history.
 
         .. deprecated::
@@ -135,7 +135,7 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
         # Create table if it doesn't exist
         self._create_table_if_not_exists()
 
-    def _create_client(self, **kwargs: Any) -> None:
+    def _create_client(self, **kwargs):  # type: ignore[no-untyped-def]
         """Create and initialize the OceanBase vector client.
 
         Args:
@@ -184,7 +184,8 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
                 partitions=None,
             )
 
-    def get_messages(self) -> List[BaseMessage]:
+    @property
+    def messages(self) -> List[BaseMessage]:
         """Retrieve all messages from the chat history.
 
         Returns:
@@ -204,25 +205,23 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
             output_column_name=["message_type", "content", "metadata", "created_at"],
         )
 
-        messages: List[BaseMessage] = []
+        messages = []
         rows = res.fetchall()
 
         # Sort by created_at timestamp to maintain order
         rows.sort(key=lambda x: int(x[3]) if x[3] else 0)
 
         for row in rows:
-            message_type, content, metadata_raw, created_at = row
-            metadata: Dict[str, Any] = (
-                json.loads(metadata_raw)
-                if isinstance(metadata_raw, str)
-                else metadata_raw or {}
+            message_type, content, metadata, created_at = row
+            metadata = (
+                json.loads(metadata) if isinstance(metadata, str) else metadata or {}
             )
 
             # Convert stored message back to BaseMessage
             if message_type == "human":
                 from langchain_core.messages import HumanMessage
 
-                msg: BaseMessage = HumanMessage(content=content)
+                msg = HumanMessage(content=content)
                 msg.additional_kwargs = metadata
                 messages.append(msg)
             elif message_type == "ai":
@@ -261,11 +260,6 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
                 messages.append(msg)
 
         return messages
-
-    @property  # type: ignore[override]
-    def messages(self) -> List[BaseMessage]:
-        """Property to retrieve all messages (required by BaseChatMessageHistory)."""
-        return self.get_messages()
 
     def add_message(self, message: BaseMessage) -> None:
         """Add a message to the chat history.

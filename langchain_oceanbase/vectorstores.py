@@ -29,6 +29,8 @@ from sqlalchemy.dialects.mysql import LONGTEXT
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
+    OceanBaseConnectionError,
+    OceanBaseIndexError,
     OceanBaseVectorDimensionError,
 )
 
@@ -520,7 +522,7 @@ class OceanbaseVectorStore(VectorStore):
 
     def _convert_results_to_documents(
         self, results: Any, include_score: bool = False
-    ) -> List[Any]:
+    ) -> List[Document] | List[Tuple[Document, float]]:
         """
         Convert search results to Document objects.
 

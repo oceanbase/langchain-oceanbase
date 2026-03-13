@@ -52,7 +52,9 @@ class TestOceanBaseConnectionError:
     def test_message_with_host_and_port(self):
         """Test error message includes host and port when provided."""
         error = OceanBaseConnectionError(
-            "Connection failed", host="localhost", port="2881"
+            "Connection failed",
+            host="localhost",
+            port="2881"
         )
         error_str = str(error)
 
@@ -63,7 +65,11 @@ class TestOceanBaseConnectionError:
 
     def test_attributes_stored(self):
         """Test that host and port are stored as attributes."""
-        error = OceanBaseConnectionError("Test", host="myhost", port="3306")
+        error = OceanBaseConnectionError(
+            "Test",
+            host="myhost",
+            port="3306"
+        )
         assert error.host == "myhost"
         assert error.port == "3306"
 
@@ -85,7 +91,9 @@ class TestOceanBaseVectorDimensionError:
     def test_message_with_dimensions(self):
         """Test error message includes expected and actual dimensions."""
         error = OceanBaseVectorDimensionError(
-            "Dimension mismatch", expected_dim=384, actual_dim=768
+            "Dimension mismatch",
+            expected_dim=384,
+            actual_dim=768
         )
         error_str = str(error)
 
@@ -96,7 +104,11 @@ class TestOceanBaseVectorDimensionError:
 
     def test_attributes_stored(self):
         """Test that dimensions are stored as attributes."""
-        error = OceanBaseVectorDimensionError("Test", expected_dim=384, actual_dim=768)
+        error = OceanBaseVectorDimensionError(
+            "Test",
+            expected_dim=384,
+            actual_dim=768
+        )
         assert error.expected_dim == 384
         assert error.actual_dim == 768
 
@@ -112,7 +124,10 @@ class TestOceanBaseIndexError:
 
     def test_message_with_index_type(self):
         """Test error message includes index type when provided."""
-        error = OceanBaseIndexError("Failed to create index", index_type="HNSW")
+        error = OceanBaseIndexError(
+            "Failed to create index",
+            index_type="HNSW"
+        )
         error_str = str(error)
 
         assert "HNSW" in error_str
@@ -138,7 +153,9 @@ class TestOceanBaseVersionError:
     def test_message_with_versions(self):
         """Test error message includes version information."""
         error = OceanBaseVersionError(
-            feature="AI Functions", required_version="4.4.1", current_version="4.3.0"
+            feature="AI Functions",
+            required_version="4.4.1",
+            current_version="4.3.0"
         )
         error_str = str(error)
 
@@ -150,7 +167,10 @@ class TestOceanBaseVersionError:
 
     def test_message_without_current_version(self):
         """Test error message when only required version is provided."""
-        error = OceanBaseVersionError(feature="Vector Index", required_version="4.3.0")
+        error = OceanBaseVersionError(
+            feature="Vector Index",
+            required_version="4.3.0"
+        )
         error_str = str(error)
 
         assert "Vector Index" in error_str
@@ -160,7 +180,9 @@ class TestOceanBaseVersionError:
     def test_attributes_stored(self):
         """Test that version info is stored as attributes."""
         error = OceanBaseVersionError(
-            feature="Test Feature", required_version="1.0.0", current_version="0.9.0"
+            feature="Test Feature",
+            required_version="1.0.0",
+            current_version="0.9.0"
         )
         assert error.feature == "Test Feature"
         assert error.required_version == "1.0.0"
@@ -179,7 +201,8 @@ class TestOceanBaseConfigurationError:
     def test_message_with_parameter(self):
         """Test error message includes parameter name."""
         error = OceanBaseConfigurationError(
-            "Invalid value", parameter="vidx_metric_type"
+            "Invalid value",
+            parameter="vidx_metric_type"
         )
         error_str = str(error)
 
@@ -191,7 +214,7 @@ class TestOceanBaseConfigurationError:
         error = OceanBaseConfigurationError(
             "Invalid metric type",
             parameter="vidx_metric_type",
-            valid_values=["l2", "cosine", "inner_product"],
+            valid_values=["l2", "cosine", "inner_product"]
         )
         error_str = str(error)
 
@@ -205,7 +228,9 @@ class TestOceanBaseConfigurationError:
         """Test that parameter and valid_values are stored as attributes."""
         valid_values = ["a", "b", "c"]
         error = OceanBaseConfigurationError(
-            "Test", parameter="test_param", valid_values=valid_values
+            "Test",
+            parameter="test_param",
+            valid_values=valid_values
         )
         assert error.parameter == "test_param"
         assert error.valid_values == valid_values
@@ -268,6 +293,5 @@ class TestTroubleshootingURL:
         ]
 
         for exc in exceptions:
-            assert TROUBLESHOOTING_URL in str(
-                exc
-            ), f"{type(exc).__name__} should include troubleshooting URL"
+            assert TROUBLESHOOTING_URL in str(exc), \
+                f"{type(exc).__name__} should include troubleshooting URL"
