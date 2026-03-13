@@ -13,12 +13,14 @@ Requirements:
 pip install openai mysql-connector-python numpy
 Set env vars: OB_HOST, OB_PORT, OB_USER, OB_PASSWORD, OB_DB, OPENAI_API_KEY
 """
-import os
+
 import json
+import os
 import time
+
 import mysql.connector
-import openai
 import numpy as np
+import openai
 
 # Configuration (from environment)
 OB_HOST = os.environ.get("OB_HOST", "127.0.0.1")
@@ -29,13 +31,17 @@ OB_DB = os.environ.get("OB_DB", "langchain_ob_demo")
 
 openai.api_key = os.environ.get("OPENAI_API_KEY", "")
 
+
 def get_db_conn():
     return mysql.connector.connect(
         host=OB_HOST, port=OB_PORT, user=OB_USER, password=OB_PASSWORD, database=OB_DB
     )
 
+
 def init_db():
-    conn = mysql.connector.connect(host=OB_HOST, port=OB_PORT, user=OB_USER, password=OB_PASSWORD)
+    conn = mysql.connector.connect(
+        host=OB_HOST, port=OB_PORT, user=OB_USER, password=OB_PASSWORD
+    )
     cursor = conn.cursor()
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{OB_DB}`;")
     conn.commit()
@@ -58,23 +64,31 @@ def init_db():
     cursor.close()
     conn.close()
 
+
 def embed_texts(texts):
     # Uses OpenAI embeddings (text-embedding-3-small as an example).
     # You can replace with another embeddings provider.
     if not openai.api_key:
-        raise RuntimeError("OPENAI_API_KEY is required to generate embeddings for this demo")
+        raise RuntimeError(
+            "OPENAI_API_KEY is required to generate embeddings for this demo"
+        )
     resp = openai.Embedding.create(model="text-embedding-3-small", input=texts)
     embeddings = [r["embedding"] for r in resp["data"]]
     return embeddings
+
 
 def insert_document(content, embedding):
     conn = get_db_conn()
     cursor = conn.cursor()
     emb_json = json.dumps(embedding)
-    cursor.execute("INSERT INTO documents (content, embedding) VALUES (%s, %s)", (content, emb_json))
+    cursor.execute(
+        "INSERT INTO documents (content, embedding) VALUES (%s, %s)",
+        (content, emb_json),
+    )
     conn.commit()
     cursor.close()
     conn.close()
+
 
 def fetch_all_docs():
     conn = get_db_conn()
@@ -89,12 +103,14 @@ def fetch_all_docs():
         results.append({"id": r["id"], "content": r["content"], "embedding": emb})
     return results
 
+
 def cosine_similarity(a, b):
     a = np.array(a, dtype=float)
     b = np.array(b, dtype=float)
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
         return 0.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
 
 def simple_search(query, top_k=3):
     q_emb = embed_texts([query])[0]
@@ -106,6 +122,7 @@ def simple_search(query, top_k=3):
             scored.append((score, d))
     scored.sort(key=lambda x: x[0], reverse=True)
     return scored[:top_k]
+
 
 def main():
     print("Initializing DB...")
@@ -131,6 +148,7 @@ def main():
     results = simple_search(query)
     for score, doc in results:
         print(f"\nScore: {score:.4f}\nDoc id: {doc['id']}\n{doc['content']}")
+
 
 if __name__ == "__main__":
     main()

@@ -206,7 +206,7 @@ class TestOceanBaseCheckpointSaverList:
             checkpoint: Checkpoint = {
                 "v": 1,
                 "id": f"checkpoint-{i}",
-                "ts": f"2024-01-0{i+1}T00:00:00+00:00",
+                "ts": f"2024-01-0{i + 1}T00:00:00+00:00",
                 "channel_values": {"count": i},
                 "channel_versions": {"count": str(i)},
                 "versions_seen": {},
@@ -251,7 +251,7 @@ class TestOceanBaseCheckpointSaverList:
             checkpoint: Checkpoint = {
                 "v": 1,
                 "id": f"cp-{i}",
-                "ts": f"2024-01-0{i+1}T00:00:00+00:00",
+                "ts": f"2024-01-0{i + 1}T00:00:00+00:00",
                 "channel_values": {},
                 "channel_versions": {},
                 "versions_seen": {},

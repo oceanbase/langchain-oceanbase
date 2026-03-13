@@ -51,7 +51,7 @@ def test_version_compatibility() -> bool:
                 current_parts = [int(x) for x in current.split(".")]
                 min_parts = [int(x) for x in minimum.split(".")]
                 return current_parts >= min_parts
-            except (ValueError, AttributeError):
+            except (ValueError, TypeError):
                 return True  # If we can't parse, assume it's OK
 
         if not version_ok(langchain_core.__version__, min_core_version):

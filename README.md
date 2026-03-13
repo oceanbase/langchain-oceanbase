@@ -1,6 +1,9 @@
 # langchain-oceanbase
 
-This package contains the LangChain integration with OceanBase.
+[![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+This package contains the LangChain integration with OceanBase. **Current version: 0.3.3**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -24,7 +27,6 @@ Support for `ChatMessageHistory` is provided as an additional integration and is
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
-
 ## Features
 
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
@@ -42,6 +44,8 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 * **Sparse Embeddings**: Native support for sparse vector embeddings with BM25-like functionality.
 * **Advanced Filtering**: Built-in support for metadata filtering and complex query conditions.
 * **Async Support**: Full support for async operations and high-concurrency scenarios.
+* **LangGraph Checkpointer** (0.3.3+): Persist LangGraph conversation checkpoints in OceanBase via `OceanBaseCheckpointSaver`; supports time-travel and multi-thread state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **Custom Exceptions** (0.3.3+): `OceanBaseError`, `OceanBaseConnectionError`, `OceanBaseVectorDimensionError`, `OceanBaseIndexError`, `OceanBaseVersionError`, `OceanBaseConfigurationError` with troubleshooting links in messages.
 
 ## Installation
 
@@ -56,7 +60,7 @@ pip install -U langchain-oceanbase
 - pyobvector >=0.2.0 (required for database client)
 - pyseekdb >=0.1.0 (optional, for built-in embedding functionality)
 
-> **Tip**: The current version supports `langchain-core >=1.0.0`
+> **Tip**: The current version (0.3.3) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
@@ -101,6 +105,7 @@ Choose your preferred format:
 - **[Hybrid Search Guide (Markdown)](./docs/hybrid_search.md)** - Static documentation for hybrid search
 - **[AI Functions Guide](./docs/ai_functions.md)** - Documentation for AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)
 - **[AI Functions Guide (Notebook)](./docs/ai_functions.ipynb)** - Interactive notebook for AI Functions
+- **[Migration Guide](./docs/migration_guide.md)** - Migrating to LangGraph Checkpointer and schema changes
 
 #### Built-in Embedding Sections:
 - [**Installation**](./docs/embeddings.md#installation) - Install required packages
@@ -129,7 +134,7 @@ Choose your preferred format:
 
 #### Using Built-in Embedding (No API Keys Required)
 
-The simplest way to get started is using the built-in embedding function, which requires no API keys:
+The simplest way to get started is using the built-in embedding function, which requires no API keys. **Prerequisite**: OceanBase must be running (e.g. `docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 -d oceanbase/oceanbase-ce:latest`).
 
 ```python
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
@@ -168,6 +173,8 @@ for doc in results:
     print(f"* {doc.page_content}")
 ```
 
+You can verify this example without OceanBase (imports and constructor only) by running: `poetry run python tests/run_readme_quickstart.py`.
+
 **Key Benefits of Built-in Embedding:**
 - ✅ No API keys or external services required
 - ✅ Works offline with local ONNX models
@@ -187,6 +194,147 @@ for doc in results:
 - [**Advanced Filtering**](./docs/vectorstores.md#advanced-filtering) - Metadata filtering and complex query conditions
 - [**Maximal Marginal Relevance**](./docs/vectorstores.md#maximal-marginal-relevance) - Filter for diversity in search results
 - [**Multiple Index Types**](./docs/vectorstores.md#multiple-index-types) - Different vector index types (HNSW, IVF, FLAT)
+
+## Troubleshooting
+
+### Connection Refused
+
+**Error**: `Can't connect to MySQL server on 'localhost'` or `ConnectionRefusedError`
+
+**Cause**: OceanBase is not running or not accessible on the specified host/port.
+
+**Solution**:
+1. Check if OceanBase is running:
+   ```bash
+   docker ps | grep oceanbase
+   ```
+2. Start OceanBase if not running:
+   ```bash
+   docker start oceanbase
+   ```
+3. Verify the port is correct (default: 2881 for local, 3306 for cloud)
+4. Check firewall settings if connecting to remote server
+
+### Vector Dimension Mismatch
+
+**Error**: `Vector dimension mismatch` or `OceanBaseVectorDimensionError`
+
+**Cause**: The embedding model's output dimension doesn't match the table's vector dimension.
+
+**Solution**:
+1. Check your embedding model's output dimension (e.g., `all-MiniLM-L6-v2` outputs 384 dimensions)
+2. Set the correct `embedding_dim` parameter when initializing `OceanbaseVectorStore`
+3. If the embedding model changed, recreate the table with `drop_old=True`:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       embedding_function=new_embedding,
+       embedding_dim=new_dim,
+       drop_old=True,  # Recreate table with new dimension
+       ...
+   )
+   ```
+
+### Index Creation Failed
+
+**Error**: `Failed to create index` or `OceanBaseIndexError`
+
+**Cause**: Insufficient memory, incompatible OceanBase version, or invalid index parameters.
+
+**Solution**:
+1. Check available memory on your OceanBase server
+2. Verify OceanBase version supports the index type:
+   - HNSW: OceanBase 4.3.0+
+   - IVF variants: OceanBase 4.3.0+
+3. Try a simpler index type for small datasets:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       index_type="FLAT",  # No index, exact search
+       ...
+   )
+   ```
+4. For HNSW, reduce `M` parameter if memory is limited:
+   ```python
+   vector_store = OceanbaseVectorStore(
+       index_type="HNSW",
+       vidx_algo_params={"M": 8, "efConstruction": 100},
+       ...
+   )
+   ```
+
+### AI Functions Not Supported
+
+**Error**: `AI functions are not supported` or `OceanBaseVersionError`
+
+**Cause**: OceanBase version is older than 4.4.1, which is required for AI functions.
+
+**Solution**:
+1. Upgrade to OceanBase 4.4.1 or later:
+   ```bash
+   docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 \
+       -p 2881:2881 -d oceanbase/oceanbase-ce:4.4.1.0-100000032025101610
+   ```
+2. Alternatively, use SeekDB which also supports AI functions
+3. Check current version:
+   ```sql
+   SELECT version();
+   ```
+
+### Slow Queries
+
+**Cause**: Missing vector index, wrong index type, or suboptimal search parameters.
+
+**Solution**:
+1. Ensure a vector index is created (check with `SHOW INDEX FROM table_name`)
+2. Use appropriate index type:
+   - **HNSW**: Best for large datasets with high recall requirements
+   - **IVF_FLAT**: Good balance of speed and accuracy
+   - **FLAT**: Best accuracy but slowest (no index)
+3. Tune search parameters for HNSW:
+   ```python
+   # Higher efSearch = better accuracy but slower
+   vector_store.hnsw_ef_search = 128  # Default is 64
+   ```
+4. For IVF indexes, adjust `nprobe` parameter
+
+### Sparse Vector / Full-text Search Not Working
+
+**Error**: `Sparse vector support not enabled` or `Full-text search support not enabled`
+
+**Cause**: The vector store was not initialized with sparse/fulltext support.
+
+**Solution**:
+```python
+# Enable sparse vector support
+vector_store = OceanbaseVectorStore(
+    include_sparse=True,
+    ...
+)
+
+# Enable both sparse and full-text search
+vector_store = OceanbaseVectorStore(
+    include_sparse=True,
+    include_fulltext=True,
+    ...
+)
+```
+
+Note: Full-text search requires `include_sparse=True` to be set as well.
+
+### Import Errors
+
+**Error**: `ModuleNotFoundError: No module named 'pyobvector'`
+
+**Cause**: Required dependencies are not installed.
+
+**Solution**:
+```bash
+pip install -U langchain-oceanbase pyobvector
+```
+
+For AI functions support:
+```bash
+pip install -U langchain-oceanbase pyobvector langgraph-checkpoint
+```
 
 ## Quickstart
 
@@ -245,22 +393,23 @@ python examples/hybrid_search_demo.py
 
 ## Running tests and linters
 
-- Unit tests:
+- Unit tests (no database required):
 ```bash
-pytest tests/unit
+make test
+# or: poetry run pytest tests/unit_tests/
 ```
 
-- Integration tests (requires Docker services):
+- Integration tests (requires OceanBase/SeekDB, e.g. `make docker-up`):
 ```bash
 make docker-up
-pytest tests/integration
+make integration_tests
+# or: poetry run pytest tests/integration_tests/
 ```
 
 - Lint / formatting:
 ```bash
-make fmt
-make lint
-make typecheck
+make format   # code formatting (ruff format + import sort)
+make lint    # ruff check + mypy
 ```
 
 ## Contributing

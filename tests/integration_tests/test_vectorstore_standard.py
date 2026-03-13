@@ -6,7 +6,6 @@ import os
 from typing import Generator
 
 import pytest
-from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
 from langchain_tests.integration_tests import (
     VectorStoreIntegrationTests,

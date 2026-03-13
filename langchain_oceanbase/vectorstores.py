@@ -520,7 +520,7 @@ class OceanbaseVectorStore(VectorStore):
 
     def _convert_results_to_documents(
         self, results: Any, include_score: bool = False
-    ) -> List[Any]:
+    ) -> List[Document] | List[Tuple[Document, float]]:
         """
         Convert search results to Document objects.
 

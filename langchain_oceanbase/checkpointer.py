@@ -526,7 +526,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             "channel_values": checkpoint_channel_values,
             "channel_versions": checkpoint_data.get("channel_versions", {}),
             "versions_seen": checkpoint_data.get("versions_seen", {}),
-            "pending_sends": checkpoint_data.get("pending_sends", []),  # type: ignore[typeddict-item]
+            "pending_sends": checkpoint_data.get("pending_sends", []),
+            "updated_channels": checkpoint_data.get("updated_channels"),
         }
 
         return CheckpointTuple(
