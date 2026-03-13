@@ -53,8 +53,12 @@ class TestEmbeddingVectorization:
         assert isinstance(result, list), "Result should be a list"
         assert len(result) == 1, "Should return one embedding"
         assert isinstance(result[0], list), "Embedding should be a list"
-        assert len(result[0]) == ef.dimension, f"Embedding dimension should be {ef.dimension}"
-        assert all(isinstance(x, float) for x in result[0]), "All values should be floats"
+        assert (
+            len(result[0]) == ef.dimension
+        ), f"Embedding dimension should be {ef.dimension}"
+        assert all(
+            isinstance(x, float) for x in result[0]
+        ), "All values should be floats"
 
     def test_multiple_texts_embedding(self):
         """Test multiple texts embedding generation."""
@@ -65,7 +69,9 @@ class TestEmbeddingVectorization:
         assert len(results) == len(texts), f"Should return {len(texts)} embeddings"
         for i, emb in enumerate(results):
             assert isinstance(emb, list), f"Embedding {i} should be a list"
-            assert len(emb) == ef.dimension, f"Embedding {i} dimension should be {ef.dimension}"
+            assert (
+                len(emb) == ef.dimension
+            ), f"Embedding {i} dimension should be {ef.dimension}"
 
     def test_dimension_consistency(self):
         """Test that all embeddings have consistent dimensions."""
@@ -89,11 +95,17 @@ class TestEmbeddingVectorization:
         documents = ["Hello world", "How are you?", "Python programming"]
         doc_embeddings = adapter.embed_documents(documents)
         assert isinstance(doc_embeddings, list), "Document embeddings should be a list"
-        assert len(doc_embeddings) == len(documents), f"Should return {len(documents)} embeddings"
+        assert len(doc_embeddings) == len(
+            documents
+        ), f"Should return {len(documents)} embeddings"
         for i, emb in enumerate(doc_embeddings):
             assert isinstance(emb, list), f"Embedding {i} should be a list"
-            assert len(emb) == adapter.dimension, f"Embedding {i} dimension should be {adapter.dimension}"
-            assert all(isinstance(x, float) for x in emb), f"All values in embedding {i} should be floats"
+            assert (
+                len(emb) == adapter.dimension
+            ), f"Embedding {i} dimension should be {adapter.dimension}"
+            assert all(
+                isinstance(x, float) for x in emb
+            ), f"All values in embedding {i} should be floats"
 
     def test_adapter_embed_query(self):
         """Test adapter embed_query method."""
@@ -101,8 +113,12 @@ class TestEmbeddingVectorization:
         query = "Hello world"
         query_embedding = adapter.embed_query(query)
         assert isinstance(query_embedding, list), "Query embedding should be a list"
-        assert len(query_embedding) == adapter.dimension, f"Query embedding dimension should be {adapter.dimension}"
-        assert all(isinstance(x, float) for x in query_embedding), "All values should be floats"
+        assert (
+            len(query_embedding) == adapter.dimension
+        ), f"Query embedding dimension should be {adapter.dimension}"
+        assert all(
+            isinstance(x, float) for x in query_embedding
+        ), "All values should be floats"
 
     def test_adapter_consistency(self):
         """Test consistency between embed_query and embed_documents."""
@@ -110,8 +126,12 @@ class TestEmbeddingVectorization:
         test_text = "Test consistency"
         query_emb = adapter.embed_query(test_text)
         doc_emb = adapter.embed_documents([test_text])[0]
-        assert len(query_emb) == len(doc_emb), "Query and document embeddings should have same dimension"
-        assert query_emb == doc_emb, "Query and document embeddings should be identical for same text"
+        assert len(query_emb) == len(
+            doc_emb
+        ), "Query and document embeddings should have same dimension"
+        assert (
+            query_emb == doc_emb
+        ), "Query and document embeddings should be identical for same text"
 
     def test_similarity_computation(self):
         """Test that embeddings can be used for similarity computation."""
@@ -159,4 +179,3 @@ class TestEmbeddingVectorization:
         assert len(embeddings) == len(texts)
         for emb in embeddings:
             assert len(emb) == adapter.dimension
-
