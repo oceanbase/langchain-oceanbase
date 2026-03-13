@@ -233,10 +233,109 @@ jobs:
           print(f'Embedding test passed: {len(embeddings[0])} dimensions')
           "
 
+  test-standard:
+    name: Standard Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.14'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: |
+          poetry install --with test,test_integration --no-interaction
+
+      - name: Start OceanBase container
+        run: |
+          set -e
+          echo "Starting OceanBase container for standard tests..."
+          docker run -d --name langchain_oceanbase_standard \
+            -e MODE=mini \
+            -p 2881:2881 \
+            oceanbase/oceanbase-ce:4.3.5-lts
+          echo "OceanBase container started"
+
+      - name: Wait for OceanBase to be ready
+        run: |
+          set -e
+          echo "Waiting for OceanBase to be ready (log contains 'boot success!')..."
+          timeout=300  # 5 minutes
+          interval=5
+
+          while [ $timeout -gt 0 ]; do
+            if ! docker ps | grep -q "langchain_oceanbase_standard"; then
+              echo "OceanBase container stopped unexpectedly."
+              docker logs "langchain_oceanbase_standard" || true
+              exit 1
+            fi
+
+            if docker logs "langchain_oceanbase_standard" 2>&1 | grep -q "boot success!"; then
+              echo "boot success! detected, OceanBase should be ready."
+              break
+            fi
+
+            sleep $interval
+            timeout=$((timeout - interval))
+          done
+
+          if [ $timeout -le 0 ]; then
+            echo "OceanBase did not become ready in time."
+            docker logs "langchain_oceanbase_standard" || true
+            exit 1
+          fi
+
+      - name: Run standard unit tests
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: 2881
+          OB_USER: root@test
+          OB_PASSWORD: ""
+          OB_DB: test
+        run: |
+          set -e
+          echo "Running standard unit tests..."
+          poetry run pytest tests/unit_tests/ -v --tb=short
+
+      - name: Run standard integration tests
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: 2881
+          OB_USER: root@test
+          OB_PASSWORD: ""
+          OB_DB: test
+        run: |
+          set -e
+          echo "Running standard integration tests..."
+          poetry run pytest tests/integration_tests/test_vectorstores.py::TestOceanbaseVectorStoreSync -v --tb=short
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f langchain_oceanbase_standard || true
+
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, test, test-embedding]
+    needs: [lint, test, test-embedding, test-standard]
     if: always()
 
     steps:
@@ -246,3 +345,4 @@ jobs:
           echo "Lint:            ${{ needs.lint.result }}"
           echo "DB test matrix:  ${{ needs.test.result }}"
           echo "Embedding tests: ${{ needs.test-embedding.result }}"
+          echo "Standard tests:  ${{ needs.test-standard.result }}"
