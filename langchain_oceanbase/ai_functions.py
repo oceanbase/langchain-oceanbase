@@ -20,7 +20,6 @@ from sqlalchemy import text
 
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
-    OceanBaseConnectionError,
     OceanBaseVersionError,
 )
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION

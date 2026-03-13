@@ -127,10 +127,10 @@ def get_checkpointer():
     # Connection configuration
     # Default values are for Aliyun OceanBase Cloud - modify for your environment
     connection_args = {
-        "host": os.getenv("OCEANBASE_HOST","127.0.0.1"),
+        "host": os.getenv("OCEANBASE_HOST", "127.0.0.1"),
         "port": os.getenv("OCEANBASE_PORT", "2881"),
         "user": os.getenv("OCEANBASE_USER", "root@test"),
-        "password": os.getenv("OCEANBASE_PASSWORD", ""), 
+        "password": os.getenv("OCEANBASE_PASSWORD", ""),
         "db_name": os.getenv("OCEANBASE_DB", "test"),
     }
 
@@ -209,7 +209,7 @@ def main():
             {"messages": [HumanMessage(content="I'm back! Do you remember me?")]},
             config,
         )
-        print(f"\nUser: I'm back! Do you remember me?")
+        print("\nUser: I'm back! Do you remember me?")
         print(f"Agent: {result['messages'][-1].content}")
 
     # ==============================================================================
@@ -227,7 +227,7 @@ def main():
         {"messages": [HumanMessage(content="Hello from thread 2!")]},
         thread_2_config,
     )
-    print(f"\nThread 2 - User: Hello from thread 2!")
+    print("\nThread 2 - User: Hello from thread 2!")
     print(f"Thread 2 - Agent: {result['messages'][-1].content}")
 
     # ==============================================================================

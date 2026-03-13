@@ -1,6 +1,9 @@
 # langchain-oceanbase
 
-This package contains the LangChain integration with OceanBase.
+[![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+This package contains the LangChain integration with OceanBase. **Current version: 0.3.3**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -41,6 +44,8 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 * **Sparse Embeddings**: Native support for sparse vector embeddings with BM25-like functionality.
 * **Advanced Filtering**: Built-in support for metadata filtering and complex query conditions.
 * **Async Support**: Full support for async operations and high-concurrency scenarios.
+* **LangGraph Checkpointer** (0.3.3+): Persist LangGraph conversation checkpoints in OceanBase via `OceanBaseCheckpointSaver`; supports time-travel and multi-thread state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **Custom Exceptions** (0.3.3+): `OceanBaseError`, `OceanBaseConnectionError`, `OceanBaseVectorDimensionError`, `OceanBaseIndexError`, `OceanBaseVersionError`, `OceanBaseConfigurationError` with troubleshooting links in messages.
 
 ## Installation
 
@@ -55,7 +60,7 @@ pip install -U langchain-oceanbase
 - pyobvector >=0.2.0 (required for database client)
 - pyseekdb >=0.1.0 (optional, for built-in embedding functionality)
 
-> **Tip**: The current version supports `langchain-core >=1.0.0`
+> **Tip**: The current version (0.3.3) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
@@ -100,6 +105,7 @@ Choose your preferred format:
 - **[Hybrid Search Guide (Markdown)](./docs/hybrid_search.md)** - Static documentation for hybrid search
 - **[AI Functions Guide](./docs/ai_functions.md)** - Documentation for AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)
 - **[AI Functions Guide (Notebook)](./docs/ai_functions.ipynb)** - Interactive notebook for AI Functions
+- **[Migration Guide](./docs/migration_guide.md)** - Migrating to LangGraph Checkpointer and schema changes
 
 #### Built-in Embedding Sections:
 - [**Installation**](./docs/embeddings.md#installation) - Install required packages
@@ -128,7 +134,7 @@ Choose your preferred format:
 
 #### Using Built-in Embedding (No API Keys Required)
 
-The simplest way to get started is using the built-in embedding function, which requires no API keys:
+The simplest way to get started is using the built-in embedding function, which requires no API keys. **Prerequisite**: OceanBase must be running (e.g. `docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 -d oceanbase/oceanbase-ce:latest`).
 
 ```python
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
@@ -166,6 +172,8 @@ results = vector_store.similarity_search("artificial intelligence", k=2)
 for doc in results:
     print(f"* {doc.page_content}")
 ```
+
+You can verify this example without OceanBase (imports and constructor only) by running: `poetry run python tests/run_readme_quickstart.py`.
 
 **Key Benefits of Built-in Embedding:**
 - ✅ No API keys or external services required
@@ -385,22 +393,23 @@ python examples/hybrid_search_demo.py
 
 ## Running tests and linters
 
-- Unit tests:
+- Unit tests (no database required):
 ```bash
-pytest tests/unit
+make test
+# or: poetry run pytest tests/unit_tests/
 ```
 
-- Integration tests (requires Docker services):
+- Integration tests (requires OceanBase/SeekDB, e.g. `make docker-up`):
 ```bash
 make docker-up
-pytest tests/integration
+make integration_tests
+# or: poetry run pytest tests/integration_tests/
 ```
 
 - Lint / formatting:
 ```bash
-make fmt
-make lint
-make typecheck
+make format   # code formatting (ruff format + import sort)
+make lint    # ruff check + mypy
 ```
 
 ## Contributing

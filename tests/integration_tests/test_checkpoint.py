@@ -1,16 +1,15 @@
 import time
 import uuid
-import pickle
+
 import pytest
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.base import Checkpoint, CheckpointMetadata, ChannelVersions
+from langchain_core.messages import HumanMessage
 
 from langchain_oceanbase.checkpoint import OceanBaseSaver
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 # Define connection args (should match your environment)
 CONNECTION_ARGS = DEFAULT_OCEANBASE_CONNECTION
+
 
 @pytest.fixture
 def saver():
@@ -21,7 +20,7 @@ def saver():
     saver = OceanBaseSaver(
         connection_args=CONNECTION_ARGS,
         table_name=table_name,
-        writes_table_name=writes_table_name
+        writes_table_name=writes_table_name,
     )
 
     yield saver
@@ -32,6 +31,7 @@ def saver():
         saver.client.drop_table(writes_table_name)
     except Exception:
         pass
+
 
 def test_put_and_get_tuple(saver):
     """Test saving and retrieving a checkpoint."""
@@ -50,9 +50,7 @@ def test_put_and_get_tuple(saver):
         "v": 1,
         "ts": "2024-01-01T00:00:00.000000+00:00",
         "id": "cp-1",
-        "channel_values": {
-            "messages": [HumanMessage(content="Hello")]
-        },
+        "channel_values": {"messages": [HumanMessage(content="Hello")]},
         "channel_versions": {"messages": 1},
         "versions_seen": {"messages": {"node-1": 1}},
         "pending_sends": [],
@@ -77,6 +75,7 @@ def test_put_and_get_tuple(saver):
     assert len(cp_tuple.checkpoint["channel_values"]["messages"]) == 1
     assert cp_tuple.checkpoint["channel_values"]["messages"][0].content == "Hello"
     assert cp_tuple.metadata["source"] == "input"
+
 
 def test_list_checkpoints(saver):
     """Test listing checkpoints."""
@@ -112,6 +111,7 @@ def test_list_checkpoints(saver):
     assert checkpoints[0].checkpoint["id"] == "cp-2"
     assert checkpoints[2].checkpoint["id"] == "cp-0"
 
+
 def test_put_writes(saver):
     """Test saving and retrieving pending writes."""
     thread_id = "thread-writes"
@@ -132,7 +132,7 @@ def test_put_writes(saver):
         "channel_values": {},
         "channel_versions": {},
         "versions_seen": {},
-        "pending_sends": []
+        "pending_sends": [],
     }
     saver.put(config, checkpoint, {}, {})
 

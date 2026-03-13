@@ -248,7 +248,9 @@ class OceanBaseConfigurationError(OceanBaseError):
                 f"See: {TROUBLESHOOTING_URL}"
             )
         elif parameter:
-            full_message = f"{message} Parameter: {parameter}. See: {TROUBLESHOOTING_URL}"
+            full_message = (
+                f"{message} Parameter: {parameter}. See: {TROUBLESHOOTING_URL}"
+            )
         else:
             full_message = f"{message} See: {TROUBLESHOOTING_URL}"
         super().__init__(full_message)

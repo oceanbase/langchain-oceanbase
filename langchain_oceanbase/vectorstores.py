@@ -29,8 +29,6 @@ from sqlalchemy.dialects.mysql import LONGTEXT
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
-    OceanBaseConnectionError,
-    OceanBaseIndexError,
     OceanBaseVectorDimensionError,
 )
 

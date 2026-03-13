@@ -1,10 +1,10 @@
 """OceanBase LangGraph Checkpoint Saver."""
 
 import pickle
-import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
 
 from langchain_core.runnables import RunnableConfig
+
 try:
     from langgraph.checkpoint.base import (
         BaseCheckpointSaver,
@@ -20,7 +20,7 @@ except ImportError:
     CheckpointMetadata = None
     CheckpointTuple = None
 from pyobvector import ObVecClient
-from sqlalchemy import JSON, BLOB, Column, String, Text
+from sqlalchemy import BLOB, Column, String
 
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
@@ -50,7 +50,9 @@ class OceanBaseSaver(BaseCheckpointSaver):
             )
         super().__init__()
         self.connection_args = (
-            connection_args if connection_args is not None else DEFAULT_OCEANBASE_CONNECTION
+            connection_args
+            if connection_args is not None
+            else DEFAULT_OCEANBASE_CONNECTION
         )
         self.table_name = table_name
         self.writes_table_name = writes_table_name
@@ -109,7 +111,9 @@ class OceanBaseSaver(BaseCheckpointSaver):
                 Column("checkpoint_ns", String(255), primary_key=True),
                 Column("checkpoint_id", String(255), primary_key=True),
                 Column("task_id", String(255), primary_key=True),
-                Column("idx", String(50), primary_key=True), # Using String for index to be safe or Integer
+                Column(
+                    "idx", String(50), primary_key=True
+                ),  # Using String for index to be safe or Integer
                 Column("channel", String(255), nullable=False),
                 Column("type", String(50), nullable=True),
                 Column("value", BLOB, nullable=False),

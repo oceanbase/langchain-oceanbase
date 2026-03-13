@@ -72,7 +72,7 @@ class TestOceanBaseCheckpointSaverSetup:
 
     @pytest.mark.skip(
         reason="This test requires a local OceanBase instance at localhost:2881. "
-               "Run manually when local OceanBase is available."
+        "Run manually when local OceanBase is available."
     )
     def test_default_connection_args(self):
         """Test that default connection args are used when none provided.
@@ -206,7 +206,7 @@ class TestOceanBaseCheckpointSaverList:
             checkpoint: Checkpoint = {
                 "v": 1,
                 "id": f"checkpoint-{i}",
-                "ts": f"2024-01-0{i+1}T00:00:00+00:00",
+                "ts": f"2024-01-0{i + 1}T00:00:00+00:00",
                 "channel_values": {"count": i},
                 "channel_versions": {"count": str(i)},
                 "versions_seen": {},
@@ -251,7 +251,7 @@ class TestOceanBaseCheckpointSaverList:
             checkpoint: Checkpoint = {
                 "v": 1,
                 "id": f"cp-{i}",
-                "ts": f"2024-01-0{i+1}T00:00:00+00:00",
+                "ts": f"2024-01-0{i + 1}T00:00:00+00:00",
                 "channel_values": {},
                 "channel_versions": {},
                 "versions_seen": {},
