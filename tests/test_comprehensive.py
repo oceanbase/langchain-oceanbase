@@ -5,7 +5,19 @@ Combines CI tests, compatibility tests, and integration tests
 """
 
 import importlib
+import os
 import sys
+
+
+def _ci_connection_args() -> dict[str, str]:
+    """Match CI env (see .github/workflows/ci.yml) and integration_tests defaults."""
+    return {
+        "host": os.getenv("OB_HOST", "127.0.0.1"),
+        "port": os.getenv("OB_PORT", "2881"),
+        "user": os.getenv("OB_USER", "root@test"),
+        "password": os.getenv("OB_PASSWORD", ""),
+        "db_name": os.getenv("OB_DB", "test"),
+    }
 
 
 def test_imports() -> bool:
@@ -116,14 +128,7 @@ def test_basic_functionality() -> bool:
         # Create embeddings using DefaultEmbeddingFunctionAdapter
         embeddings = DefaultEmbeddingFunctionAdapter()
 
-        # CI OceanBase configuration
-        connection_args = {
-            "host": "127.0.0.1",
-            "port": "2881",
-            "user": "root",
-            "password": "",
-            "db_name": "test",
-        }
+        connection_args = _ci_connection_args()
 
         # Test different index types
         index_types = ["HNSW", "IVF", "FLAT"]
@@ -214,13 +219,7 @@ def test_metric_types() -> bool:
 
         embeddings = DefaultEmbeddingFunctionAdapter()
 
-        connection_args = {
-            "host": "127.0.0.1",
-            "port": "2881",
-            "user": "root",
-            "password": "",
-            "db_name": "test",
-        }
+        connection_args = _ci_connection_args()
 
         metric_types = ["l2", "inner_product", "cosine"]
 
@@ -269,13 +268,7 @@ def test_from_texts() -> bool:
 
         embeddings = DefaultEmbeddingFunctionAdapter()
 
-        connection_args = {
-            "host": "127.0.0.1",
-            "port": "2881",
-            "user": "root",
-            "password": "",
-            "db_name": "test",
-        }
+        connection_args = _ci_connection_args()
 
         texts = [
             "First comprehensive text",
