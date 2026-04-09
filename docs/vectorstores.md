@@ -8,6 +8,7 @@ This notebook covers how to get started with the Oceanbase vector store.
 ## Table of Contents
 
 - [Setup](#setup) - Deploy OceanBase and install dependencies
+- [Embedded SeekDB (optional)](#embedded-seekdb-optional) - Local SeekDB without a server
 - [Initialization](#initialization) - Configure and create vector store
 - [Manage vector store](#manage-vector-store) - Add, update, and delete vectors
 - [Query vector store](#query-vector-store) - Search and retrieve vectors
@@ -49,7 +50,46 @@ tmp_client.perform_raw_text_sql("ALTER SYSTEM ob_vector_memory_limit_percentage 
 
     <sqlalchemy.engine.cursor.CursorResult at 0x12696f2a0>
 
+## Embedded SeekDB (optional)
 
+Instead of running an OceanBase server, you can use **embedded SeekDB** via [pyobvector](https://pypi.org/project/pyobvector/): a local on-disk database with the same SQL and vector APIs. `OceanbaseVectorStore` forwards `path=` or `pyseekdb_client=` to `ObVecClient`, which selects embedded SeekDB when those arguments are set.
+
+**Install** (installs the embedded runtime `pylibseekdb` on supported platforms):
+
+```text
+pip install -U "langchain-oceanbase" "pyobvector[pyseekdb]"
+```
+
+If imports fail, upgrade `pyseekdb` so the platform wheel for `pylibseekdb` is installed, for example:
+
+```text
+pip install -U "pyseekdb>=1.2"
+```
+
+**Minimal example** (`connection_args` is optional; defaults include `db_name="test"`). Use a dedicated directory for SeekDB data:
+
+```python
+from langchain_core.documents import Document
+from langchain_core.embeddings import FakeEmbeddings
+
+from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+
+embeddings = FakeEmbeddings(size=384)
+
+vector_store = OceanbaseVectorStore(
+    embedding_function=embeddings,
+    table_name="langchain_vector_embedded",
+    path="./seekdb_data",
+    embedding_dim=384,
+    drop_old=True,
+    vidx_metric_type="l2",
+)
+
+vector_store.add_documents([Document(page_content="hello embedded seekdb")])
+print(vector_store.similarity_search("hello", k=1))
+```
+
+Alternatively, construct a `pyseekdb.Client` and pass `pyseekdb_client=...` (see `examples/embedded_seekdb_vectorstore.py`).
 
 ## Initialization
 

@@ -2981,63 +2981,31 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pylibseekdb"
-version = "1.0.0.post1"
-description = "OceanBase SeekDB"
+version = "1.1.0"
+description = "An AI-Native Search Database. Unifies vector, text, structured and semi-structured data in a single engine, enabling hybrid search and in-database AI workflows."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "sys_platform == \"linux\""
+markers = "sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\""
 files = [
-    {file = "pylibseekdb-1.0.0.post1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:7597e9fd16d8041de0a807778755748caa68ab7325c4ce1482fb273e7ce06817"},
-    {file = "pylibseekdb-1.0.0.post1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:9b464cef55054e14bc434692b29260655f2d5cb045ab9846e45237114fc39704"},
-    {file = "pylibseekdb-1.0.0.post1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:d6203dd3fa72e5f945d159a0676a153c39d2723bcd8ec65c02191bd3ea362f31"},
-    {file = "pylibseekdb-1.0.0.post1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:3b499b7a3503dce422dbb9ed6133c5d27b27546df9e75bf9d4e408e520ed72b2"},
-    {file = "pylibseekdb-1.0.0.post1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:07cbeecde1aaf5923e434bbcae2b27d6d7415354422eb54c459b84d25a47cbcb"},
-    {file = "pylibseekdb-1.0.0.post1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:edbc44df517f97dfcc248435f04ccf3b8a659c3d56a370a144e8783e9d73a98e"},
-    {file = "pylibseekdb-1.0.0.post1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:169416e717a05c38ac984a5ea9c1778e17d01912bb7d3c52771b90a631e89429"},
-    {file = "pylibseekdb-1.0.0.post1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:e12ac23e8409fdb7785d8054ff4361910e761540ab7eafede9aa464e7dbc1ac7"},
-    {file = "pylibseekdb-1.0.0.post1-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:82d2c56dbce6d41f2059cd4285292f00bf801eb6f5c36df12ab30eb18c714070"},
-    {file = "pylibseekdb-1.0.0.post1-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:7249a82f55e1e8f4c13c0f6a1a773fa95902d8e2334c674491e601b2efbcc89b"},
-    {file = "pylibseekdb-1.0.0.post1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:c1113b6b6579a8743cb6dcceed3a21473713c988cab91650c85e01d58682a4b7"},
-    {file = "pylibseekdb-1.0.0.post1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:fb8b195338f42a0c5d021b0ad67aad342348167adacdb500eadd3c649a93d485"},
-    {file = "pylibseekdb-1.0.0.post1-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:4cdb0b11e64b465c77dc52a76ec46ab9ff85eba2c5af7ef5f2a4001288e1c49a"},
-    {file = "pylibseekdb-1.0.0.post1-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:9878fb337111d3c3367a936aee61fac34238f0d0901cedf7773d061855407d06"},
-    {file = "pylibseekdb-1.0.0.post1-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:823e788b6badac6dd34a874e7b53092f946c565e3b5b18086546ef79701f156f"},
-    {file = "pylibseekdb-1.0.0.post1-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:3f1ba01b0d0b4e14a14b3423a81f40fd0c6754e9ae86d3a002219ff967c3d751"},
-    {file = "pylibseekdb-1.0.0.post1-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:565e8b60d4ee344e7063641c0a376300132e177b8974a4a493fce945a4531b11"},
-    {file = "pylibseekdb-1.0.0.post1-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:11dbe76c1ba5aa9eefd0d9fdf70c7757408d048a9813edeb277ada656218524b"},
-]
-
-[package.dependencies]
-pylibseekdb_runtime = "1.0.0.post1"
-
-[[package]]
-name = "pylibseekdb-runtime"
-version = "1.0.0.post1"
-description = "OceanBase SeekDB"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-markers = "sys_platform == \"linux\""
-files = [
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:76d709519b3250d3ac1abd7ec74fc5d992f7e83e048d263485b2613aec03f9eb"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:8c851e961460ac049606c537e8837391f4ccf84e93e860b2e88301872504b1a8"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:255974e2d3699647c7dc3c29c5e801b7e02c57d66f908db7e9cc991e7d9f5461"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:d488fdb26e6b30aacb43f82dfe0f5495ee3a70aa47f73dfd08cdc044e09284f3"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:a68e79c7a3b8c2780cf331814412ab0aaaf698a8ad68062d8e7ab1cf07d7773a"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:069431907b3c9a142f74dc16f68fa4f4288be4a222ac7b1bb301ee0c3cd91611"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:fa3ca059472c0b0ddf1012ca6ef03150c9cf7d0b31f52753ef0981140ed93b63"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:d58a30a9ea32238ec7db72bc6c8e199c3e4a2c54ffda039c0fc69573c78afdf8"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:b491b37347d2e806c9359e6c73ad5c399cd6bf9c3fa7daa8ee0b75b513f486ad"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:82bc2201dde2fd94f60ba7b4e52406602d40feff4301a4f5af82188beb5d9a2c"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:57e46c2dec66f255e9a1a34476f5e80348b2ddfaa8ee8b39c6c6509506e45446"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:eec0d00d824620b2f36635c12c920a3f3cd03a5509521d8a618a800b1b75ae04"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:aa2f6be0abdc0b4e35f2971cf96c26a72d1715901b85a7584ed4e395cf999027"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:916771f9fc6a613d0b8334f1688eb4519b314cd30a21c5e83096f84a039c7b06"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:57d83b99d5cce38e74e6496aab2bf5e88c58f467b4e30bb137d8626df51d1ddd"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:79d9092c9aaa7b845ff4bdd132aa94608bdc62d1ea80d0e541a7f182bb64b1c1"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:3eacbb0eca5b038b87e41de27d735ef49e1148de3214f42fb89b990ca32e2386"},
-    {file = "pylibseekdb_runtime-1.0.0.post1-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:77233252834e1c071dc3e58197dbd402661552914930865ebf818cfa36bdfcbb"},
+    {file = "pylibseekdb-1.1.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:beaed68943cb59d41c968086eff4efd018291ae5faa66e6b273794a28574d5cb"},
+    {file = "pylibseekdb-1.1.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:9902f008118b23a7c74747b013c382342ae245c3ea34b498e831319f81de02e9"},
+    {file = "pylibseekdb-1.1.0-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:0a0ad03d87f1db1a7087ba89e398ce1ee00496e977d38c493104d0d517590968"},
+    {file = "pylibseekdb-1.1.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:e272bee013aabab152c4795676b3b0ba1107a8058f29a07d2a803168faea090c"},
+    {file = "pylibseekdb-1.1.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:116a28356532705ed262e2a7951ac8221ae8c97ade866fdab2df521dcca62530"},
+    {file = "pylibseekdb-1.1.0-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:d6ae33353e833cb56a7ce2cdb0305b872cdac9467eb79c277f82479c529b38ef"},
+    {file = "pylibseekdb-1.1.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:9e2f8240b08a93e347d32534e7c394b7a151b67555a384eb88d73d4b0f8b9d14"},
+    {file = "pylibseekdb-1.1.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:4d8615471bac39b1980951cbce0d742fa7bec676f28eb95f4db687fdd1e9c71b"},
+    {file = "pylibseekdb-1.1.0-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:d5688a0fe6fc703e5a707cbe0e139d570f1d34daff1491304d6b43154f2e12d9"},
+    {file = "pylibseekdb-1.1.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:1e53d171246239bd526d1a1f9b3abef1ad9b10597bc1c0a2acf7e65afbd7d844"},
+    {file = "pylibseekdb-1.1.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:66d01ee9c0ad4a2e88ea2420f9c4d1ee9bb011b70c553a654c8a4e230e920ad7"},
+    {file = "pylibseekdb-1.1.0-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:11d2fbc98dcb8ec97257b949184dc09d9ba693811e77457bba9c8f80d282c265"},
+    {file = "pylibseekdb-1.1.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:ff05ac4bb13a4b5f9dd03771ded866beed72562ea497f68a4ae897c226afc446"},
+    {file = "pylibseekdb-1.1.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:065158b79192cce7635995a7599e99b21a3ff729cd6f68e31a65ed62f830bd3a"},
+    {file = "pylibseekdb-1.1.0-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:3f699867729b9cfe9d7835d45d7609c381512e4359c857cf3e0aaa5936344f15"},
+    {file = "pylibseekdb-1.1.0-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:67fddf5d6a46567f6081857ceae00e0c5c437ac3f5ebf7e664c0f7b452d2912f"},
+    {file = "pylibseekdb-1.1.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:2edcfdae2a00276eb76aa9da1eeb5f5fe7ccd43560cb195f2789fc36328d1744"},
+    {file = "pylibseekdb-1.1.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:4d9c4f033d1adaa14ead12a5f9da6eb48e5b36c2d63ff953f8f02c9287241af4"},
 ]
 
 [[package]]
@@ -3058,23 +3026,26 @@ rsa = ["cryptography"]
 
 [[package]]
 name = "pyobvector"
-version = "0.2.20"
+version = "0.2.25"
 description = "A python SDK for OceanBase Vector Store, based on SQLAlchemy, compatible with Milvus API."
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyobvector-0.2.20-py3-none-any.whl", hash = "sha256:9a3c1d3eb5268eae64185f8807b10fd182f271acf33323ee731c2ad554d1c076"},
-    {file = "pyobvector-0.2.20.tar.gz", hash = "sha256:72a54044632ba3bb27d340fb660c50b22548d34c6a9214b6653bc18eee4287c4"},
+    {file = "pyobvector-0.2.25-py3-none-any.whl", hash = "sha256:ae0153f99bd0222783ed7e3951efc31a0d2b462d926b6f86ebd2033409aede8f"},
+    {file = "pyobvector-0.2.25.tar.gz", hash = "sha256:94d987583255ed8aba701d37a5d7c2727ec5fd7e0288cd9dd87a1f5ee36dd923"},
 ]
 
 [package.dependencies]
-aiomysql = ">=0.3.2,<0.4.0"
+aiomysql = ">=0.3.2"
 numpy = ">=1.17.0"
 pydantic = ">=2.7.0,<3"
-pymysql = ">=1.1.1,<2.0.0"
+pymysql = ">=1.1.1"
 sqlalchemy = ">=1.4,<=3"
 sqlglot = ">=26.0.1"
+
+[package.extras]
+pyseekdb = ["pyseekdb (>=0.1.0) ; python_version >= \"3.11\""]
 
 [[package]]
 name = "pyreadline3"
@@ -3094,24 +3065,24 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyseekdb"
-version = "1.0.0b8"
-description = "A unified Python client for SeekDB that supports embedded, server, and OceanBase."
+version = "1.2.0.post1"
+description = "A unified Python client for seekdb that supports embedded, server, and OceanBase."
 optional = false
-python-versions = "<3.14,>=3.11"
+python-versions = "<4,>=3.11"
 groups = ["main"]
 files = [
-    {file = "pyseekdb-1.0.0b8-py3-none-any.whl", hash = "sha256:7ffdec9025bf5719877eeb3ecff42bab1a4e06c7996e93d72023e2377fa0eba1"},
+    {file = "pyseekdb-1.2.0.post1-py3-none-any.whl", hash = "sha256:592529225c8a1b4b69bc927d2d05613451bbbeba0aed16ca1fef391caa8d5ead"},
 ]
 
 [package.dependencies]
-httpx = "*"
-numpy = ">=1.26"
-onnxruntime = ">=1.19.0"
-pylibseekdb = {version = "*", markers = "sys_platform == \"linux\""}
-pymysql = ">=1.1.1,<2.0.0"
+httpx = {version = "*", markers = "python_version < \"3.14\""}
+numpy = ">=1.26,<2.4.0 || >2.4.0"
+onnxruntime = {version = ">=1.19.0", markers = "python_version < \"3.14\""}
+pylibseekdb = {version = "*", markers = "sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\""}
+pymysql = ">=1.1.1"
 tenacity = "*"
-tokenizers = ">=0.15.0"
-tqdm = "*"
+tokenizers = {version = ">=0.15.0", markers = "python_version < \"3.14\""}
+tqdm = {version = "*", markers = "python_version < \"3.14\""}
 
 [[package]]
 name = "pytest"
@@ -4423,4 +4394,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "7b8b83d813ffb0a0b46f0f53d4d1a3c90a2a8d85a308e82e44da234176a572c2"
+content-hash = "67cace566ef884f088591b943d4b55fd9b5d89ad2261b8bf73847afc8ac4d5e7"
