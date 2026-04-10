@@ -37,6 +37,7 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
   * **Automatic Integration**: Can be automatically used in `OceanbaseVectorStore` by setting `embedding_function=None`
   * **Technical Specs**: Model `all-MiniLM-L6-v2`, 384 dimensions, ONNX Runtime inference
 * **Vector Storage**: Store embeddings from any LangChain embedding model in OceanBase with automatic table creation and index management.
+* **Embedded SeekDB (optional)**: Run local embedded [SeekDB](https://github.com/oceanbase/pyseekdb) through pyobvector (`path=` or `pyseekdb_client=` on `OceanbaseVectorStore`) without OceanBase; requires `pyobvector[pyseekdb]` or a recent `pyseekdb` that installs `pylibseekdb`. See [docs/vectorstores.md#embedded-seekdb-optional](./docs/vectorstores.md#embedded-seekdb-optional) and [examples/embedded_seekdb_vectorstore.py](./examples/embedded_seekdb_vectorstore.py).
 * **Similarity Search**: Perform efficient similarity searches on vector data with multiple distance metrics (L2, cosine, inner product).
 * **Hybrid Search**: Combine vector search with sparse vector search and full-text search for improved results with configurable weights.
 * **Maximal Marginal Relevance**: Filter for diversity in search results to avoid redundant information.
@@ -58,7 +59,7 @@ pip install -U langchain-oceanbase
 - Python >=3.11
 - langchain-core >=1.0.0
 - pyobvector >=0.2.0 (required for database client)
-- pyseekdb >=0.1.0 (optional, for built-in embedding functionality)
+- pyseekdb >=0.1.0 (required dependency; use **>=1.2** on supported platforms for **embedded SeekDB** and the `pylibseekdb` runtime)
 
 > **Tip**: The current version (0.3.3) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
@@ -95,7 +96,8 @@ docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 
 Choose your preferred format:
 
 - **[Jupyter Notebook](./docs/vectorstores.ipynb)** - Interactive notebook with executable code cells
-- **[Markdown](./docs/vectorstores.md)** - Static documentation for easy reading
+- **[Markdown](./docs/vectorstores.md)** - Static documentation for easy reading (includes [embedded SeekDB](./docs/vectorstores.md#embedded-seekdb-optional))
+- **[Embedded SeekDB example](./examples/embedded_seekdb_vectorstore.py)** - Runnable script using local SeekDB without Docker
 
 ### Additional Resources
 
