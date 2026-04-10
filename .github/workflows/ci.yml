@@ -171,6 +171,7 @@ jobs:
           OB_USER: ${{ matrix.user }}
           OB_PASSWORD: ""
           OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
           set -e
           echo "Running comprehensive tests with ${{ matrix.db-type }}..."
@@ -183,6 +184,7 @@ jobs:
           OB_USER: ${{ matrix.user }}
           OB_PASSWORD: ""
           OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
           set -e
           echo "Running integration tests with ${{ matrix.db-type }}..."
