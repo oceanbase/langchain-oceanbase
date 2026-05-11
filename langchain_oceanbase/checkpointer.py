@@ -363,7 +363,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         limit: Optional[int] = None,
     ) -> AsyncIterator[CheckpointTuple]:
         """Async wrapper for list."""
-        for item in self.list(config, filter=filter, before=before, limit=limit):
+        items = list(self.list(config, filter=filter, before=before, limit=limit))
+        for item in items:
             yield item
 
     async def aput(

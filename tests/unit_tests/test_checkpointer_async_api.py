@@ -19,7 +19,9 @@ from langchain_oceanbase.checkpointer import OceanBaseCheckpointSaver
 @pytest.fixture
 def saver(monkeypatch: pytest.MonkeyPatch) -> OceanBaseCheckpointSaver:
     """Create a saver without opening a real database connection."""
-    monkeypatch.setattr(OceanBaseCheckpointSaver, "_create_client", lambda self, **_: None)
+    monkeypatch.setattr(
+        OceanBaseCheckpointSaver, "_create_client", lambda self, **_: None
+    )
     return OceanBaseCheckpointSaver(connection_args={})
 
 
@@ -48,6 +50,41 @@ async def test_aget_tuple_delegates_to_sync_method(
 
     get_tuple.assert_called_once_with(config)
     assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_alist_materializes_sync_results_before_async_yield(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """alist should exhaust the sync iterator before the async generator yields."""
+    events: list[str] = []
+    expected = [
+        MagicMock(name="checkpoint_tuple_1"),
+        MagicMock(name="checkpoint_tuple_2"),
+    ]
+
+    def sync_items() -> object:
+        events.append("start")
+        yield expected[0]
+        events.append("after-first-yield")
+        yield expected[1]
+        events.append("after-second-yield")
+
+    monkeypatch.setattr(
+        saver,
+        "list",
+        lambda *args, **kwargs: cast(object, sync_items()),
+    )
+
+    results = []
+    async for item in saver.alist(None):
+        results.append(item)
+        if len(results) == 1:
+            break
+
+    assert results == [expected[0]]
+    assert events == ["start", "after-first-yield", "after-second-yield"]
 
 
 def test_prepare_metadata_matches_langgraph_serialization_rules(
