@@ -109,7 +109,8 @@ git push origin feature/onboard-docker-compose
 - `feature/*`, `bugfix/*`, `chore/*`, `docs/*`, `refactor/*`, `test/*` -> `develop`
 - `release/*` -> `main`
 - `hotfix/*` -> `main`, then back-merge to `develop`
-- Dependabot PRs may continue to target `main` until `develop` is fully reconciled with the current `main` history
+- Dependabot version updates target `develop`
+- Dependabot security updates still follow the GitHub default branch until a repo admin switches the default branch from `main` to `develop`
 
 Include:
 - Problem you're solving
