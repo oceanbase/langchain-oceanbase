@@ -7,11 +7,12 @@ their state within and across multiple interactions.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import random
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Dict, Optional, cast
 
@@ -24,11 +25,13 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
     get_checkpoint_id,
+    get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
-from pyobvector import ObVecClient
+from pyobvector import ObVecClient  # type: ignore[import-untyped]
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import ResourceClosedError
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
@@ -36,6 +39,7 @@ from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 logger = logging.getLogger(__name__)
 
 MetadataInput = Dict[str, Any] | None
+_BLOB_PREFIX = b"base64:"
 
 # MySQL-compatible migrations for OceanBase
 MIGRATIONS = [
@@ -262,6 +266,44 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             with self.obvector.engine.connect() as conn:
                 yield conn
 
+    @staticmethod
+    def _result_fetchone_or_none(result: Any) -> Any:
+        """Fetch one row, treating closed empty SELECT results as no rows."""
+        try:
+            return result.fetchone()
+        except ResourceClosedError:
+            return None
+
+    @staticmethod
+    def _result_fetchall(result: Any) -> list[Any]:
+        """Fetch all rows, treating closed empty SELECT results as empty."""
+        try:
+            return list(result.fetchall())
+        except ResourceClosedError:
+            return []
+
+    @staticmethod
+    def _encode_storage_blob(blob: bytes | None) -> bytes | None:
+        """Encode binary blobs in a backend-safe representation."""
+        if blob is None:
+            return None
+        return _BLOB_PREFIX + base64.b64encode(blob)
+
+    @staticmethod
+    def _decode_storage_blob(blob: Any) -> bytes | None:
+        """Decode storage blobs while remaining compatible with existing raw bytes."""
+        if blob is None:
+            return None
+        if isinstance(blob, memoryview):
+            blob = blob.tobytes()
+        elif isinstance(blob, bytearray):
+            blob = bytes(blob)
+        elif isinstance(blob, str):
+            blob = blob.encode("utf-8")
+        if isinstance(blob, bytes) and blob.startswith(_BLOB_PREFIX):
+            return base64.b64decode(blob[len(_BLOB_PREFIX) :])
+        return blob
+
     def setup(self) -> None:
         """Set up the checkpoint database.
 
@@ -282,9 +324,9 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
             # Get current migration version
             result = conn.execute(
-                text("SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1")
+                text("SELECT COALESCE(MAX(v), -1) FROM checkpoint_migrations")
             )
-            row = result.fetchone()
+            row = self._result_fetchone_or_none(result)
             version = -1 if row is None else row[0]
 
             # Run pending migrations
@@ -307,6 +349,55 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                         conn.commit()
                     except Exception:
                         conn.rollback()
+
+    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+        """Async wrapper for get_tuple."""
+        return self.get_tuple(config)
+
+    async def alist(
+        self,
+        config: Optional[RunnableConfig],
+        *,
+        filter: Optional[Dict[str, Any]] = None,
+        before: Optional[RunnableConfig] = None,
+        limit: Optional[int] = None,
+    ) -> AsyncIterator[CheckpointTuple]:
+        """Async wrapper for list."""
+        for item in self.list(config, filter=filter, before=before, limit=limit):
+            yield item
+
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        """Async wrapper for put."""
+        return self.put(config, checkpoint, metadata, new_versions)
+
+    async def aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
+        """Async wrapper for put_writes."""
+        self.put_writes(config, writes, task_id, task_path)
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        """Async wrapper for delete_thread."""
+        self.delete_thread(thread_id)
+
+    async def aprune(
+        self,
+        thread_ids: Sequence[str],
+        *,
+        strategy: str = "keep_latest",
+    ) -> None:
+        """Async wrapper for prune."""
+        self.prune(thread_ids, strategy=strategy)
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
@@ -363,7 +454,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     {"thread_id": thread_id, "checkpoint_ns": checkpoint_ns},
                 )
 
-            row = result.fetchone()
+            row = self._result_fetchone_or_none(result)
             if row is None:
                 return None
 
@@ -428,11 +519,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     "version": str(version),
                 },
             )
-            row = result.fetchone()
+            row = self._result_fetchone_or_none(result)
             if row and row[0] != "empty":
                 type_str, blob = row[0], row[1]
-                if blob is not None:
-                    channel_values[channel] = self.serde.loads_typed((type_str, blob))
+                decoded_blob = self._decode_storage_blob(blob)
+                if decoded_blob is not None:
+                    channel_values[channel] = self.serde.loads_typed(
+                        (type_str, decoded_blob)
+                    )
 
         return channel_values
 
@@ -471,10 +565,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         )
 
         writes = []
-        for row in result:
+        for row in self._result_fetchall(result):
             task_id, channel, type_str, blob = row
-            if blob is not None:
-                value = self.serde.loads_typed((type_str, blob))
+            decoded_blob = self._decode_storage_blob(blob)
+            if decoded_blob is not None:
+                value = self.serde.loads_typed((type_str, decoded_blob))
                 writes.append((task_id, channel, value))
 
         return writes
@@ -526,7 +621,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             "channel_values": checkpoint_channel_values,
             "channel_versions": checkpoint_data.get("channel_versions", {}),
             "versions_seen": checkpoint_data.get("versions_seen", {}),
-            "pending_sends": checkpoint_data.get("pending_sends", []),
+            "pending_sends": checkpoint_data.get("pending_sends", []),  # type: ignore[typeddict-unknown-key]
             "updated_channels": checkpoint_data.get("updated_channels"),
         }
 
@@ -593,7 +688,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
         with self._cursor() as conn:
             result = conn.execute(text(query), params)
-            rows = result.fetchall()
+            rows = self._result_fetchall(result)
 
             for row in rows:
                 thread_id = row[0]
@@ -731,7 +826,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                         "channel": channel,
                         "version": str(version),
                         "type": type_str,
-                        "blob": blob,
+                        "blob": self._encode_storage_blob(blob),
                     },
                 )
 
@@ -778,10 +873,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         Returns:
             Prepared metadata dictionary.
         """
-        result = dict(metadata)
-        # Remove writes from metadata as they're stored separately
-        result.pop("writes", None)
-        return result
+        return dict(get_serializable_checkpoint_metadata(config, metadata))
 
     def put_writes(
         self,
@@ -854,7 +946,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                         "idx": write_idx,
                         "channel": channel,
                         "type": type_str,
-                        "blob": blob,
+                        "blob": self._encode_storage_blob(blob),
                     },
                 )
             conn.commit()
@@ -883,6 +975,165 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 text("DELETE FROM checkpoint_writes WHERE thread_id = :thread_id"),
                 {"thread_id": thread_id},
             )
+            conn.commit()
+
+    def prune(
+        self,
+        thread_ids: Sequence[str],
+        *,
+        strategy: str = "keep_latest",
+    ) -> None:
+        """Prune checkpoints for the given threads."""
+        if not thread_ids:
+            return
+
+        if strategy == "delete":
+            for thread_id in thread_ids:
+                self.delete_thread(thread_id)
+            return
+
+        if strategy != "keep_latest":
+            raise ValueError(f"Unsupported prune strategy: {strategy}")
+
+        with self._cursor() as conn:
+            for thread_id in thread_ids:
+                keepers = self._result_fetchall(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT checkpoint_ns, MAX(checkpoint_id) AS checkpoint_id
+                            FROM checkpoints
+                            WHERE thread_id = :thread_id
+                            GROUP BY checkpoint_ns
+                            """
+                        ),
+                        {"thread_id": thread_id},
+                    )
+                )
+                if not keepers:
+                    continue
+
+                refs_by_ns: dict[str, set[tuple[str, str]]] = {}
+                for checkpoint_ns, checkpoint_id in keepers:
+                    checkpoint_row = self._result_fetchone_or_none(
+                        conn.execute(
+                            text(
+                                """
+                                SELECT checkpoint
+                                FROM checkpoints
+                                WHERE thread_id = :thread_id
+                                  AND checkpoint_ns = :checkpoint_ns
+                                  AND checkpoint_id = :checkpoint_id
+                                """
+                            ),
+                            {
+                                "thread_id": thread_id,
+                                "checkpoint_ns": checkpoint_ns,
+                                "checkpoint_id": checkpoint_id,
+                            },
+                        )
+                    )
+                    if checkpoint_row is None:
+                        refs_by_ns[checkpoint_ns] = set()
+                        continue
+
+                    checkpoint_data = checkpoint_row[0]
+                    if isinstance(checkpoint_data, str):
+                        checkpoint_data = json.loads(checkpoint_data)
+                    channel_versions = checkpoint_data.get("channel_versions", {})
+                    refs_by_ns[checkpoint_ns] = {
+                        (channel, str(version))
+                        for channel, version in channel_versions.items()
+                    }
+
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE checkpoints
+                            SET parent_checkpoint_id = NULL
+                            WHERE thread_id = :thread_id
+                              AND checkpoint_ns = :checkpoint_ns
+                              AND checkpoint_id = :checkpoint_id
+                            """
+                        ),
+                        {
+                            "thread_id": thread_id,
+                            "checkpoint_ns": checkpoint_ns,
+                            "checkpoint_id": checkpoint_id,
+                        },
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            DELETE FROM checkpoints
+                            WHERE thread_id = :thread_id
+                              AND checkpoint_ns = :checkpoint_ns
+                              AND checkpoint_id <> :checkpoint_id
+                            """
+                        ),
+                        {
+                            "thread_id": thread_id,
+                            "checkpoint_ns": checkpoint_ns,
+                            "checkpoint_id": checkpoint_id,
+                        },
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            DELETE FROM checkpoint_writes
+                            WHERE thread_id = :thread_id
+                              AND checkpoint_ns = :checkpoint_ns
+                              AND checkpoint_id <> :checkpoint_id
+                            """
+                        ),
+                        {
+                            "thread_id": thread_id,
+                            "checkpoint_ns": checkpoint_ns,
+                            "checkpoint_id": checkpoint_id,
+                        },
+                    )
+
+                for checkpoint_ns, refs in refs_by_ns.items():
+                    if not refs:
+                        conn.execute(
+                            text(
+                                """
+                                DELETE FROM checkpoint_blobs
+                                WHERE thread_id = :thread_id
+                                  AND checkpoint_ns = :checkpoint_ns
+                                """
+                            ),
+                            {
+                                "thread_id": thread_id,
+                                "checkpoint_ns": checkpoint_ns,
+                            },
+                        )
+                        continue
+
+                    params: dict[str, Any] = {
+                        "thread_id": thread_id,
+                        "checkpoint_ns": checkpoint_ns,
+                    }
+                    keep_conditions = []
+                    for idx, (channel, version) in enumerate(sorted(refs)):
+                        params[f"channel_{idx}"] = channel
+                        params[f"version_{idx}"] = version
+                        keep_conditions.append(
+                            f"(channel = :channel_{idx} AND version = :version_{idx})"
+                        )
+
+                    conn.execute(
+                        text(
+                            f"""
+                            DELETE FROM checkpoint_blobs
+                            WHERE thread_id = :thread_id
+                              AND checkpoint_ns = :checkpoint_ns
+                              AND NOT ({' OR '.join(keep_conditions)})
+                            """
+                        ),
+                        params,
+                    )
+
             conn.commit()
 
     def get_next_version(self, current: str | None, channel: None) -> str:
