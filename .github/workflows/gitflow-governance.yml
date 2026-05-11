@@ -1,0 +1,68 @@
+name: GitFlow Governance
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+    branches:
+      - main
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    name: GitFlow Governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate branch flow
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          allow_main() {
+            case "$1" in
+              release/*|hotfix/*|dependabot/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          allow_develop() {
+            case "$1" in
+              feature/*|bugfix/*|chore/*|docs/*|refactor/*|test/*|release/*|hotfix/*|dependabot/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          case "$BASE_REF" in
+            main)
+              if allow_main "$HEAD_REF"; then
+                echo "Validated: $HEAD_REF -> $BASE_REF"
+                exit 0
+              fi
+              echo "::error title=Invalid git-flow target::Pull requests into main must come from release/*, hotfix/*, or dependabot/* branches."
+              exit 1
+              ;;
+            develop)
+              if allow_develop "$HEAD_REF"; then
+                echo "Validated: $HEAD_REF -> $BASE_REF"
+                exit 0
+              fi
+              echo "::error title=Invalid git-flow target::Pull requests into develop must come from feature/*, bugfix/*, chore/*, docs/*, refactor/*, test/*, release/*, hotfix/*, or dependabot/* branches."
+              exit 1
+              ;;
+            release/*|hotfix/*)
+              echo "Validated: $HEAD_REF -> $BASE_REF (no extra policy for release/hotfix maintenance branches)"
+              ;;
+            *)
+              echo "::error title=Unsupported base branch::Base branch '$BASE_REF' is outside the configured git-flow policy."
+              exit 1
+              ;;
+          esac
