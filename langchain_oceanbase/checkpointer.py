@@ -1128,7 +1128,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                             DELETE FROM checkpoint_blobs
                             WHERE thread_id = :thread_id
                               AND checkpoint_ns = :checkpoint_ns
-                              AND NOT ({' OR '.join(keep_conditions)})
+                              AND NOT ({" OR ".join(keep_conditions)})
                             """
                         ),
                         params,
