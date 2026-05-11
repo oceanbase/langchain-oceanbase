@@ -77,23 +77,41 @@ mypy .
 
 ## Submitting PRs
 
-1. Create a branch with a descriptive name:
+1. Start from the correct base branch:
+   - Regular work starts from `develop`
+   - Releases start from `develop`
+   - Hotfixes start from `main`
+
+2. Create a branch with a git-flow style name:
 ```bash
-git checkout -b feat/onboard-docker-compose
+git checkout -b feature/onboard-docker-compose origin/develop
 ```
 
-2. Make edits and add tests where applicable.
+Examples:
+```bash
+git checkout -b bugfix/fix-seekdb-timeout origin/develop
+git checkout -b release/0.3.4 origin/develop
+git checkout -b hotfix/restore-ci origin/main
+```
 
-3. Run tests and linters locally.
+3. Make edits and add tests where applicable.
 
-4. Commit changes:
+4. Run tests and linters locally.
+
+5. Commit changes:
 ```bash
 git add .
 git commit -m "feat: add docker-compose and onboarding docs"
-git push origin feat/onboard-docker-compose
+git push origin feature/onboard-docker-compose
 ```
 
-5. Open a PR describing the change. Include:
+6. Open a PR describing the change. Use these git-flow targets:
+- `feature/*`, `bugfix/*`, `chore/*`, `docs/*`, `refactor/*`, `test/*` -> `develop`
+- `release/*` -> `main`
+- `hotfix/*` -> `main`, then back-merge to `develop`
+- Dependabot PRs may continue to target `main` until `develop` is fully reconciled with the current `main` history
+
+Include:
 - Problem you're solving
 - Any migration or manual steps
 - Testing steps

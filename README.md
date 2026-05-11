@@ -417,6 +417,8 @@ make lint    # ruff check + mypy
 ## Contributing
 
 See `CONTRIBUTING.md` for detailed developer setup and the PR process. When submitting a PR, please:
-- Base your branch on `main`
+- Target `develop` for regular work (`feature/*`, `bugfix/*`, `chore/*`, `docs/*`, `refactor/*`, `test/*`)
+- Use `release/*` or `hotfix/*` as the normal PR sources into `main`
+- Expect Dependabot maintenance PRs to continue targeting `main` until `develop` is fully reconciled
 - Reference the issue (e.g., `Closes #43`) in the PR body
 - Run linters and tests locally
