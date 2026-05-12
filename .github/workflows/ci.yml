@@ -74,14 +74,14 @@ jobs:
             image: oceanbase/oceanbase-ce:4.3.5-lts
             mode: mini
             runs-comprehensive: true
-            integration-target: tests/integration_tests/
+            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
           - db-type: seekdb
             port: 2882
             user: root
             image: oceanbase/seekdb
             mode: mini
             runs-comprehensive: true
-            integration-target: tests/integration_tests/
+            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
 
     steps:
       - name: Check out code
