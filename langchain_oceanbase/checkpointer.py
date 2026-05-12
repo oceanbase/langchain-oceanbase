@@ -29,7 +29,7 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 from pyobvector import ObVecClient  # type: ignore[import-untyped]
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import ResourceClosedError
 
@@ -82,15 +82,21 @@ MIGRATIONS = [
         PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
     );""",
     # Migration 4: Add indexes for better query performance
-    """CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_id
+    """CREATE INDEX idx_checkpoints_thread_id
        ON checkpoints(thread_id);""",
     # Migration 5: Add index on checkpoint_blobs
-    """CREATE INDEX IF NOT EXISTS idx_checkpoint_blobs_thread_id
+    """CREATE INDEX idx_checkpoint_blobs_thread_id
        ON checkpoint_blobs(thread_id);""",
     # Migration 6: Add index on checkpoint_writes
-    """CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_thread_id
+    """CREATE INDEX idx_checkpoint_writes_thread_id
        ON checkpoint_writes(thread_id);""",
 ]
+
+REQUIRED_INDEX_MIGRATIONS = (
+    ("checkpoints", "idx_checkpoints_thread_id", MIGRATIONS[4]),
+    ("checkpoint_blobs", "idx_checkpoint_blobs_thread_id", MIGRATIONS[5]),
+    ("checkpoint_writes", "idx_checkpoint_writes_thread_id", MIGRATIONS[6]),
+)
 
 # SQL for selecting checkpoints with channel values and pending writes
 SELECT_SQL = """
@@ -333,22 +339,59 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             for v, migration in enumerate(MIGRATIONS[version + 1 :], start=version + 1):
                 try:
                     conn.execute(text(migration))
-                    conn.execute(
-                        text("INSERT INTO checkpoint_migrations (v) VALUES (:v)"),
-                        {"v": v},
-                    )
-                    conn.commit()
-                except Exception:
-                    # Index might already exist, continue
+                except Exception as exc:
                     conn.rollback()
-                    try:
-                        conn.execute(
-                            text("INSERT INTO checkpoint_migrations (v) VALUES (:v)"),
-                            {"v": v},
-                        )
-                        conn.commit()
-                    except Exception:
-                        conn.rollback()
+                    if v < 4 or not self._is_duplicate_index_error(exc):
+                        raise
+                self._record_migration(conn, v)
+                conn.commit()
+
+            # Repair missing indexes for MySQL users who recorded old migrations
+            # before index creation succeeded.
+            self._ensure_required_indexes(conn)
+            conn.commit()
+
+    @staticmethod
+    def _is_duplicate_index_error(exc: Exception) -> bool:
+        """Return True when an index DDL failed because the index already exists."""
+        message = str(exc).lower()
+        duplicate_markers = (
+            "duplicate key name",
+            "already exists",
+            "already exist",
+        )
+        return any(marker in message for marker in duplicate_markers)
+
+    @staticmethod
+    def _record_migration(conn: Connection, version: int) -> None:
+        """Record a successfully applied migration version."""
+        conn.execute(
+            text("INSERT INTO checkpoint_migrations (v) VALUES (:v)"),
+            {"v": version},
+        )
+
+    def _existing_index_names(self, conn: Connection, table_name: str) -> set[str]:
+        """Return the current index names for a table."""
+        try:
+            return {
+                index["name"]
+                for index in inspect(conn).get_indexes(table_name)
+                if index.get("name")
+            }
+        except Exception:
+            result = conn.execute(text(f"SHOW INDEX FROM `{table_name}`"))
+            return {row[2] for row in self._result_fetchall(result)}
+
+    def _ensure_required_indexes(self, conn: Connection) -> None:
+        """Create any missing checkpoint indexes idempotently."""
+        for table_name, index_name, migration_sql in REQUIRED_INDEX_MIGRATIONS:
+            if index_name in self._existing_index_names(conn, table_name):
+                continue
+            try:
+                conn.execute(text(migration_sql))
+            except Exception as exc:
+                if not self._is_duplicate_index_error(exc):
+                    raise
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Async wrapper for get_tuple."""
@@ -740,12 +783,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 params["checkpoint_id"] = checkpoint_id
 
         if filter:
-            # OceanBase JSON query syntax
             for key, value in filter.items():
                 param_name = f"filter_{key}"
-                conditions.append(
-                    f"JSON_EXTRACT(c.metadata, '$.{key}') = :{param_name}"
-                )
+                if isinstance(value, str):
+                    conditions.append(
+                        f"JSON_UNQUOTE(JSON_EXTRACT(c.metadata, '$.{key}')) = :{param_name}"
+                    )
+                else:
+                    conditions.append(
+                        f"JSON_EXTRACT(c.metadata, '$.{key}') = :{param_name}"
+                    )
                 params[param_name] = (
                     json.dumps(value)
                     if not isinstance(value, (str, int, float, bool))
