@@ -45,7 +45,7 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 * **Sparse Embeddings**: Native support for sparse vector embeddings with BM25-like functionality.
 * **Advanced Filtering**: Built-in support for metadata filtering and complex query conditions.
 * **Async Support**: Full support for async operations and high-concurrency scenarios.
-* **LangGraph Checkpointer** (0.3.3+): Persist LangGraph conversation checkpoints in OceanBase via `OceanBaseCheckpointSaver`; supports time-travel and multi-thread state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **LangGraph Checkpointer** (0.3.3+): Persist LangGraph conversation checkpoints in OceanBase via `OceanBaseCheckpointSaver`; supports time-travel and multi-thread state. This is the supported checkpoint API for new code. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
 * **Custom Exceptions** (0.3.3+): `OceanBaseError`, `OceanBaseConnectionError`, `OceanBaseVectorDimensionError`, `OceanBaseIndexError`, `OceanBaseVersionError`, `OceanBaseConfigurationError` with troubleshooting links in messages.
 
 ## Installation

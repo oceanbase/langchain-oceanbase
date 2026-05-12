@@ -1,17 +1,15 @@
+# mypy: disable-error-code="import-untyped,typeddict-unknown-key,arg-type,no-untyped-def,misc"
 """Integration tests for OceanBaseCheckpointSaver.
 
 These tests verify that OceanBaseCheckpointSaver correctly implements
 the BaseCheckpointSaver interface for LangGraph persistence.
 
-Prerequisites:
-    - Running OceanBase instance
-    - Set environment variables:
-        OCEANBASE_HOST, OCEANBASE_PORT, OCEANBASE_USER,
-        OCEANBASE_PASSWORD, OCEANBASE_DB
+They run against embedded SeekDB when the native runtime is available.
 """
 
-import os
+import shutil
 import uuid
+from pathlib import Path
 from typing import Annotated, TypedDict
 
 import pytest
@@ -27,21 +25,47 @@ from langchain_oceanbase import OceanBaseCheckpointSaver
 # ==============================================================================
 
 
-def get_connection_args():
-    """Get OceanBase connection arguments from environment."""
-    return {
-        "host": os.getenv("OCEANBASE_HOST", "127.0.0.1"),
-        "port": os.getenv("OCEANBASE_PORT", "2881"),
-        "user": os.getenv("OCEANBASE_USER", "root@test"),
-        "password": os.getenv("OCEANBASE_PASSWORD", ""),
-        "db_name": os.getenv("OCEANBASE_DB", "test"),
-    }
+def _embedded_seekdb_runtime_available() -> bool:
+    try:
+        import pylibseekdb  # noqa: F401
+    except ImportError:
+        return False
+    try:
+        import pyseekdb  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+pytestmark = pytest.mark.skipif(
+    not _embedded_seekdb_runtime_available(),
+    reason=(
+        "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
+        "or pip install 'pyobvector[pyseekdb]')"
+    ),
+)
+
+
+def create_checkpointer(path: str) -> OceanBaseCheckpointSaver:
+    """Create a checkpointer backed by an embedded SeekDB path."""
+    return OceanBaseCheckpointSaver(connection_args={"db_name": "test"}, path=path)
 
 
 @pytest.fixture
-def checkpointer():
+def seekdb_path(tmp_path: Path) -> str:
+    """Create an isolated embedded SeekDB path for a test."""
+    root = tmp_path / f"checkpoint_seekdb_{uuid.uuid4().hex}"
+    root.mkdir(parents=True)
+    try:
+        yield str(root / "seekdb_data")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.fixture
+def checkpointer(seekdb_path: str):
     """Create a checkpointer for testing."""
-    saver = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+    saver = create_checkpointer(seekdb_path)
     saver.setup()
     return saver
 
@@ -60,9 +84,9 @@ def unique_thread_id():
 class TestOceanBaseCheckpointSaverSetup:
     """Tests for checkpointer setup and initialization."""
 
-    def test_setup_creates_tables(self):
+    def test_setup_creates_tables(self, seekdb_path: str):
         """Test that setup() creates required tables."""
-        saver = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        saver = create_checkpointer(seekdb_path)
 
         # Setup should not raise
         saver.setup()
@@ -71,8 +95,7 @@ class TestOceanBaseCheckpointSaverSetup:
         saver.setup()
 
     @pytest.mark.skip(
-        reason="This test requires a local OceanBase instance at localhost:2881. "
-        "Run manually when local OceanBase is available."
+        reason="Default connection args target a standalone OceanBase server, not embedded SeekDB."
     )
     def test_default_connection_args(self):
         """Test that default connection args are used when none provided.
@@ -425,10 +448,10 @@ class TestLangGraphIntegration:
         # Cleanup
         checkpointer.delete_thread(unique_thread_id)
 
-    def test_state_recovery_after_restart(self, unique_thread_id):
+    def test_state_recovery_after_restart(self, unique_thread_id, seekdb_path: str):
         """Test that state can be recovered after creating a new checkpointer."""
         # First session
-        checkpointer1 = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        checkpointer1 = create_checkpointer(seekdb_path)
         checkpointer1.setup()
 
         builder = StateGraph(ConversationState)
@@ -445,7 +468,7 @@ class TestLangGraphIntegration:
         )
 
         # Second session (simulating restart)
-        checkpointer2 = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        checkpointer2 = create_checkpointer(seekdb_path)
         checkpointer2.setup()
 
         graph2 = builder.compile(checkpointer=checkpointer2)
