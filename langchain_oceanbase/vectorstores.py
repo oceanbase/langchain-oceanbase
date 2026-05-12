@@ -25,6 +25,7 @@ from pyobvector.client.fts_index_param import FtsIndexParam, FtsParser
 from pyobvector.client.index_param import VecIndexType
 from sqlalchemy import JSON, Column, String, Table, func, select, text
 from sqlalchemy.dialects.mysql import LONGTEXT
+from sqlalchemy.exc import ResourceClosedError
 
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.exceptions import (
@@ -531,26 +532,31 @@ class OceanbaseVectorStore(VectorStore):
         Returns:
             List[Document] or List[Tuple[Document, float]]: Converted documents
         """
+        try:
+            rows = results.fetchall()
+        except ResourceClosedError:
+            return []
+
         if include_score:
             return [
                 (
                     Document(
-                        id=r[2],
+                        id=str(r[2]),
                         page_content=r[0],
                         metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
                     ),
                     r[3],
                 )
-                for r in results.fetchall()
+                for r in rows
             ]
         else:
             return [
                 Document(
-                    id=r[2],
+                    id=str(r[2]),
                     page_content=r[0],
                     metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
                 )
-                for r in results.fetchall()
+                for r in rows
             ]
 
     def _parse_metric_type_str_to_dist_func(self) -> Any:
@@ -633,6 +639,13 @@ class OceanbaseVectorStore(VectorStore):
 
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts]
+        elif len(ids) != total_count:
+            raise ValueError("Length of ids must match number of texts.")
+        else:
+            ids = [
+                str(candidate_id) if candidate_id not in (None, "") else str(uuid.uuid4())
+                for candidate_id in ids
+            ]
 
         if not metadatas:
             metadatas = [{} for _ in texts]
@@ -698,6 +711,9 @@ class OceanbaseVectorStore(VectorStore):
         Returns:
             List[Document]: Document results for search.
         """
+        if not ids:
+            return []
+
         res = self.obvector.get(
             table_name=self.table_name,
             ids=ids,
@@ -707,17 +723,28 @@ class OceanbaseVectorStore(VectorStore):
                 self.primary_field,
             ],
         )
-        return [
-            Document(
-                id=r[2],
-                page_content=r[0],
+        documents_by_id: dict[str, Document] = {}
+        try:
+            rows = res.fetchall()
+        except ResourceClosedError:
+            return []
+
+        for row in rows:
+            document_id = str(row[2])
+            documents_by_id[document_id] = Document(
+                id=document_id,
+                page_content=row[0],
                 metadata=(
-                    json.loads(r[1])
-                    if isinstance(r[1], str) or isinstance(r[1], bytes)
-                    else r[1]
+                    json.loads(row[1])
+                    if isinstance(row[1], str) or isinstance(row[1], bytes)
+                    else row[1]
                 ),
             )
-            for r in res.fetchall()
+
+        return [
+            documents_by_id[document_id]
+            for document_id in (str(candidate_id) for candidate_id in ids)
+            if document_id in documents_by_id
         ]
 
     def similarity_search(

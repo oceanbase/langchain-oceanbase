@@ -68,8 +68,9 @@ jobs:
             image: ""
             mode: ""
             runs-comprehensive: false
-            upgrade-latest-checkpoint-stack: false
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: false
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py
           - name: oceanbase
             db-type: oceanbase
             port: 2881
@@ -77,8 +78,9 @@ jobs:
             image: oceanbase/oceanbase-ce:4.3.5-lts
             mode: mini
             runs-comprehensive: true
-            upgrade-latest-checkpoint-stack: false
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: false
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
           - name: seekdb
             db-type: seekdb
             port: 2882
@@ -86,8 +88,9 @@ jobs:
             image: oceanbase/seekdb
             mode: mini
             runs-comprehensive: true
-            upgrade-latest-checkpoint-stack: false
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: false
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
           - name: embedded-seekdb, latest-checkpoint-stack
             db-type: embedded-seekdb
             port: ""
@@ -95,8 +98,9 @@ jobs:
             image: ""
             mode: ""
             runs-comprehensive: false
-            upgrade-latest-checkpoint-stack: true
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: true
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py
           - name: oceanbase, latest-checkpoint-stack
             db-type: oceanbase
             port: 2881
@@ -104,8 +108,9 @@ jobs:
             image: oceanbase/oceanbase-ce:4.3.5-lts
             mode: mini
             runs-comprehensive: false
-            upgrade-latest-checkpoint-stack: true
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: true
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
           - name: seekdb, latest-checkpoint-stack
             db-type: seekdb
             port: 2882
@@ -113,8 +118,9 @@ jobs:
             image: oceanbase/seekdb
             mode: mini
             runs-comprehensive: false
-            upgrade-latest-checkpoint-stack: true
-            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            upgrade-latest-stack: true
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
 
     steps:
       - name: Check out code
@@ -142,15 +148,17 @@ jobs:
         run: |
           poetry install --with test,test_integration --no-interaction
 
-      - name: Upgrade to latest supported checkpoint stack
-        if: matrix.upgrade-latest-checkpoint-stack
+      - name: Upgrade to latest supported LangChain and LangGraph stack
+        if: matrix.upgrade-latest-stack
         run: |
           set -e
           poetry run python -m pip install --upgrade --upgrade-strategy eager \
             "langgraph>=1.0,<2.0" \
             "langgraph-checkpoint>=4.0,<5.0" \
             "langchain-core>=1.0,<2.0" \
-            "pytest>=8,<10" \
+            "langchain-community>=0.4,<0.5" \
+            "langchain-tests>=1.1,<2.0" \
+            "pytest>=9.0.3,<10" \
             "pytest-asyncio>=1.3,<2"
 
       - name: Start ${{ matrix.db-type }} container
@@ -232,7 +240,7 @@ jobs:
           set -e
           poetry run python - <<'PY'
           import importlib.metadata as md
-          for name in ("langgraph", "langgraph-checkpoint", "langchain-core", "pytest", "pytest-asyncio", "langsmith", "pydantic"):
+          for name in ("langgraph", "langgraph-checkpoint", "langchain-core", "langchain-community", "langchain-tests", "pytest", "pytest-asyncio", "langsmith", "pydantic"):
               print(f"{name}={md.version(name)}")
           PY
 
@@ -258,7 +266,7 @@ jobs:
           echo "Running comprehensive tests with ${{ matrix.db-type }}..."
           poetry run python tests/test_comprehensive.py
 
-      - name: Run integration tests
+      - name: Run checkpoint integration tests
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
@@ -268,9 +276,40 @@ jobs:
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
           set -euo pipefail
-          report_path="${RUNNER_TEMP}/integration-${{ matrix.db-type }}.xml"
-          echo "Running integration tests with ${{ matrix.db-type }}..."
-          poetry run pytest ${{ matrix.integration-target }} -v --junitxml="$report_path"
+          report_path="${RUNNER_TEMP}/checkpoint-integration-${{ matrix.db-type }}.xml"
+          echo "Running checkpoint integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.checkpoint-target }} -v --junitxml="$report_path"
+          python - "$report_path" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          report_path = sys.argv[1]
+          root = ET.parse(report_path).getroot()
+          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+          failures = sum(int(suite.attrib.get("failures", 0)) for suite in suites)
+          errors = sum(int(suite.attrib.get("errors", 0)) for suite in suites)
+          skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in suites)
+          tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
+          print(
+              f"JUnit summary: tests={tests} failures={failures} errors={errors} skipped={skipped}"
+          )
+          if failures or errors:
+              raise SystemExit(1)
+          PY
+
+      - name: Run vectorstore integration tests
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: ${{ matrix.port }}
+          OB_USER: ${{ matrix.user }}
+          OB_PASSWORD: ""
+          OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
+        run: |
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/vectorstore-integration-${{ matrix.db-type }}.xml"
+          echo "Running vectorstore integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.vectorstore-target }} -v --junitxml="$report_path"
           python - "$report_path" <<'PY'
           import sys
           import xml.etree.ElementTree as ET

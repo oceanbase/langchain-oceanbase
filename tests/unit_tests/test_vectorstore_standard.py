@@ -2,6 +2,8 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.documents import Document
+from sqlalchemy.exc import ResourceClosedError
 
 from langchain_oceanbase import OceanbaseVectorStore
 
@@ -101,3 +103,65 @@ class TestOceanbaseVectorStoreUnit:
         mock_client.delete.assert_called_with(
             table_name="test_table", ids=["1"], where_clause=None
         )
+
+    def test_add_documents_generates_missing_ids(self, vectorstore, mock_client):
+        """Mixed explicit/missing document IDs should normalize to all-string IDs."""
+        vectorstore.embedding_function.embed_documents.return_value = [
+            [1.0] * 384,
+            [2.0] * 384,
+        ]
+        vectorstore._create_table_with_index = MagicMock()
+
+        docs = [
+            Document(id="foo", page_content="foo", metadata={"source": "1"}),
+            Document(page_content="bar", metadata={"source": "2"}),
+        ]
+
+        ids = vectorstore.add_documents(docs)
+
+        assert ids[0] == "foo"
+        assert isinstance(ids[1], str)
+        assert ids[1]
+        call_kwargs = mock_client.upsert.call_args.kwargs
+        assert call_kwargs["data"][0]["id"] == "foo"
+        assert call_kwargs["data"][1]["id"] == ids[1]
+
+    def test_get_by_ids_preserves_requested_order(self, vectorstore, mock_client):
+        """get_by_ids should return docs in the order requested by the caller."""
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [
+            ("bar", json.dumps({"source": "2"}), "2"),
+            ("foo", json.dumps({"source": "1"}), "1"),
+        ]
+        mock_client.get.return_value = mock_result
+
+        docs = vectorstore.get_by_ids(["1", "2"])
+
+        assert [doc.id for doc in docs] == ["1", "2"]
+        assert [doc.page_content for doc in docs] == ["foo", "bar"]
+
+    def test_similarity_search_returns_empty_when_backend_returns_no_rows(
+        self, vectorstore, mock_client
+    ):
+        """No-row backend results should map to an empty LangChain result list."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        mock_result = MagicMock()
+        mock_result.fetchall.side_effect = ResourceClosedError("no rows")
+        mock_client.ann_search.return_value = mock_result
+
+        docs = vectorstore.similarity_search("query", k=1)
+
+        assert docs == []
+
+    def test_get_by_ids_returns_empty_when_backend_returns_no_rows(
+        self, vectorstore, mock_client
+    ):
+        """Missing IDs should return an empty list instead of surfacing driver details."""
+        mock_result = MagicMock()
+        mock_result.fetchall.side_effect = ResourceClosedError("no rows")
+        mock_client.get.return_value = mock_result
+
+        docs = vectorstore.get_by_ids(["missing"])
+
+        assert docs == []
