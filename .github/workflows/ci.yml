@@ -91,6 +91,16 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+          - name: mysql
+            db-type: mysql
+            port: 3306
+            user: root
+            image: mysql:8.4
+            mode: ""
+            runs-comprehensive: false
+            upgrade-latest-stack: false
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: ""
           - name: embedded-seekdb, latest-checkpoint-stack
             db-type: embedded-seekdb
             port: ""
@@ -121,6 +131,16 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+          - name: mysql, latest-checkpoint-stack
+            db-type: mysql
+            port: 3306
+            user: root
+            image: mysql:8.4
+            mode: ""
+            runs-comprehensive: false
+            upgrade-latest-stack: true
+            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
+            vectorstore-target: ""
 
     steps:
       - name: Check out code
@@ -162,7 +182,7 @@ jobs:
             "pytest-asyncio>=1.3,<2"
 
       - name: Start ${{ matrix.db-type }} container
-        if: matrix.image != ''
+        if: matrix.image != '' && matrix.db-type != 'mysql'
         run: |
           set -e
           echo "Starting ${{ matrix.db-type }} container..."
@@ -171,6 +191,19 @@ jobs:
             -p ${{ matrix.port }}:2881 \
             ${{ matrix.image }}
           echo "${{ matrix.db-type }} container started"
+
+      - name: Start mysql container
+        if: matrix.db-type == 'mysql'
+        run: |
+          set -e
+          echo "Starting mysql container..."
+          docker run -d --name "langchain_mysql_test" \
+            -e MYSQL_ROOT_PASSWORD=rootpass \
+            -e MYSQL_DATABASE=test \
+            -e MYSQL_ROOT_HOST=% \
+            -p ${{ matrix.port }}:3306 \
+            ${{ matrix.image }}
+          echo "mysql container started"
 
       # OceanBase: wait for "boot success!"
       - name: Wait for OceanBase to be ready (boot success)
@@ -235,6 +268,36 @@ jobs:
             exit 1
           fi
 
+      - name: Wait for MySQL to be ready (mysqladmin ping)
+        if: matrix.db-type == 'mysql'
+        run: |
+          set -e
+          echo "Waiting for mysql to be ready..."
+          timeout=300
+          interval=5
+
+          while [ $timeout -gt 0 ]; do
+            if ! docker ps | grep -q "langchain_mysql_test"; then
+              echo "MySQL container stopped unexpectedly."
+              docker logs "langchain_mysql_test" || true
+              exit 1
+            fi
+
+            if docker exec "langchain_mysql_test" mysqladmin ping -h 127.0.0.1 -uroot -prootpass --silent; then
+              echo "MySQL is ready."
+              break
+            fi
+
+            sleep $interval
+            timeout=$((timeout - interval))
+          done
+
+          if [ $timeout -le 0 ]; then
+            echo "MySQL did not become ready in time."
+            docker logs "langchain_mysql_test" || true
+            exit 1
+          fi
+
       - name: Report LangGraph dependency versions
         run: |
           set -e
@@ -249,6 +312,7 @@ jobs:
           set -e
           poetry run pytest \
             tests/unit_tests/test_checkpointer_async_api.py \
+            tests/unit_tests/test_checkpointer_mysql_compat.py \
             tests/unit_tests/test_legacy_checkpoint_saver.py \
             tests/unit_tests/test_vectorstore_standard.py \
             -v
@@ -272,7 +336,7 @@ jobs:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
           OB_USER: ${{ matrix.user }}
-          OB_PASSWORD: ""
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
           OB_DB: test
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
@@ -299,11 +363,12 @@ jobs:
           PY
 
       - name: Run vectorstore integration tests
+        if: matrix.vectorstore-target != ''
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
           OB_USER: ${{ matrix.user }}
-          OB_PASSWORD: ""
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
           OB_DB: test
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |

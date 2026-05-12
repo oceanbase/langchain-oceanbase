@@ -7,6 +7,7 @@ the BaseCheckpointSaver interface for LangGraph persistence.
 They run against embedded SeekDB when the native runtime is available.
 """
 
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -37,23 +38,52 @@ def _embedded_seekdb_runtime_available() -> bool:
     return True
 
 
-pytestmark = pytest.mark.skipif(
-    not _embedded_seekdb_runtime_available(),
-    reason=(
-        "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
-        "or pip install 'pyobvector[pyseekdb]')"
-    ),
-)
+def _ci_db_type() -> str:
+    """Return the live database type provisioned by the CI matrix."""
+    return os.getenv("OB_CI_DB_TYPE", "").strip().lower()
 
 
-def create_checkpointer(path: str) -> OceanBaseCheckpointSaver:
-    """Create a checkpointer backed by an embedded SeekDB path."""
-    return OceanBaseCheckpointSaver(connection_args={"db_name": "test"}, path=path)
+def _ci_mysql_server_available() -> bool:
+    """Return True when CI provisioned a live MySQL server for tests."""
+    return _ci_db_type() == "mysql"
+
+
+def _mysql_connection_args_from_env() -> dict[str, str]:
+    """Build MySQL server connection arguments from the shared CI contract."""
+    return {
+        "host": os.getenv("OB_HOST", "127.0.0.1"),
+        "port": os.getenv("OB_PORT", "3306"),
+        "user": os.getenv("OB_USER", "root"),
+        "password": os.getenv("OB_PASSWORD", ""),
+        "db_name": os.getenv("OB_DB", "test"),
+    }
+
+
+def create_checkpointer(
+    *,
+    path: str | None = None,
+    connection_args: dict[str, str] | None = None,
+) -> OceanBaseCheckpointSaver:
+    """Create a checkpointer backed by the selected test backend."""
+    kwargs = {}
+    if path is not None:
+        kwargs["path"] = path
+    return OceanBaseCheckpointSaver(
+        connection_args=connection_args or {"db_name": "test"},
+        **kwargs,
+    )
 
 
 @pytest.fixture
 def seekdb_path(tmp_path: Path) -> str:
     """Create an isolated embedded SeekDB path for a test."""
+    if _ci_mysql_server_available():
+        pytest.skip("Embedded SeekDB path fixture is not used in the mysql CI matrix.")
+    if not _embedded_seekdb_runtime_available():
+        pytest.skip(
+            "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
+            "or pip install 'pyobvector[pyseekdb]')"
+        )
     root = tmp_path / f"checkpoint_seekdb_{uuid.uuid4().hex}"
     root.mkdir(parents=True)
     try:
@@ -63,9 +93,21 @@ def seekdb_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def checkpointer(seekdb_path: str):
+def checkpointer_factory(request: pytest.FixtureRequest):
+    """Create a new saver instance against the configured backend."""
+    if _ci_mysql_server_available():
+        return lambda: create_checkpointer(
+            connection_args=_mysql_connection_args_from_env()
+        )
+
+    seekdb_path = request.getfixturevalue("seekdb_path")
+    return lambda: create_checkpointer(path=seekdb_path)
+
+
+@pytest.fixture
+def checkpointer(checkpointer_factory):
     """Create a checkpointer for testing."""
-    saver = create_checkpointer(seekdb_path)
+    saver = checkpointer_factory()
     saver.setup()
     return saver
 
@@ -84,9 +126,9 @@ def unique_thread_id():
 class TestOceanBaseCheckpointSaverSetup:
     """Tests for checkpointer setup and initialization."""
 
-    def test_setup_creates_tables(self, seekdb_path: str):
+    def test_setup_creates_tables(self, checkpointer_factory):
         """Test that setup() creates required tables."""
-        saver = create_checkpointer(seekdb_path)
+        saver = checkpointer_factory()
 
         # Setup should not raise
         saver.setup()
@@ -448,10 +490,10 @@ class TestLangGraphIntegration:
         # Cleanup
         checkpointer.delete_thread(unique_thread_id)
 
-    def test_state_recovery_after_restart(self, unique_thread_id, seekdb_path: str):
+    def test_state_recovery_after_restart(self, unique_thread_id, checkpointer_factory):
         """Test that state can be recovered after creating a new checkpointer."""
         # First session
-        checkpointer1 = create_checkpointer(seekdb_path)
+        checkpointer1 = checkpointer_factory()
         checkpointer1.setup()
 
         builder = StateGraph(ConversationState)
@@ -468,7 +510,7 @@ class TestLangGraphIntegration:
         )
 
         # Second session (simulating restart)
-        checkpointer2 = create_checkpointer(seekdb_path)
+        checkpointer2 = checkpointer_factory()
         checkpointer2.setup()
 
         graph2 = builder.compile(checkpointer=checkpointer2)
