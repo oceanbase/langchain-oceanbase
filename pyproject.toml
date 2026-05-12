@@ -21,9 +21,9 @@ disallow_untyped_defs = "True"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-langchain-core = "^0.3.0"
-langgraph = ">=0.2.0,<1.0.0"
-langgraph-checkpoint = ">=2.1.0,<5.0.0"
+langchain-core = ">=0.3.0,<2.0.0"
+langgraph = ">=0.6.11,<2.0.0"
+langgraph-checkpoint = ">=3.0.1,<5.0.0"
 # >=1.2: unified SeekDB client. Constrain pylibseekdb so the lock resolves to 1.1+ (manylinux + macOS arm64 wheels);
 # 1.0.0.post1 is Linux-wheel-only metadata and breaks Poetry on macOS arm64 / some CI installers.
 pyseekdb = ">=1.2.0.post1,<3"
