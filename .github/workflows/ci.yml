@@ -54,7 +54,7 @@ jobs:
           poetry run mypy langchain_oceanbase/ --cache-dir .mypy_cache || true
 
   test:
-    name: Test Suite
+    name: Test Suite (${{ matrix.db-type }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -67,18 +67,21 @@ jobs:
             image: ""
             mode: ""
             runs-comprehensive: false
+            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
           - db-type: oceanbase
             port: 2881
             user: root@test
             image: oceanbase/oceanbase-ce:4.3.5-lts
             mode: mini
             runs-comprehensive: true
+            integration-target: tests/integration_tests/
           - db-type: seekdb
             port: 2882
             user: root
             image: oceanbase/seekdb
             mode: mini
             runs-comprehensive: true
+            integration-target: tests/integration_tests/
 
     steps:
       - name: Check out code
@@ -215,7 +218,7 @@ jobs:
           set -euo pipefail
           report_path="${RUNNER_TEMP}/integration-${{ matrix.db-type }}.xml"
           echo "Running integration tests with ${{ matrix.db-type }}..."
-          poetry run pytest tests/integration_tests/ -v --junitxml="$report_path"
+          poetry run pytest ${{ matrix.integration-target }} -v --junitxml="$report_path"
           python - "$report_path" <<'PY'
           import sys
           import xml.etree.ElementTree as ET
