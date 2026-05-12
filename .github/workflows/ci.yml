@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -38,7 +38,7 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Load cached venv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .venv
           key: venv-${{ runner.os }}-3.12-${{ hashFiles('**/poetry.lock') }}
@@ -97,13 +97,31 @@ jobs:
             runs-comprehensive: false
             upgrade-latest-checkpoint-stack: true
             integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
+          - name: oceanbase, latest-checkpoint-stack
+            db-type: oceanbase
+            port: 2881
+            user: root@test
+            image: oceanbase/oceanbase-ce:4.3.5-lts
+            mode: mini
+            runs-comprehensive: false
+            upgrade-latest-checkpoint-stack: true
+            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+          - name: seekdb, latest-checkpoint-stack
+            db-type: seekdb
+            port: 2882
+            user: root
+            image: oceanbase/seekdb
+            mode: mini
+            runs-comprehensive: false
+            upgrade-latest-checkpoint-stack: true
+            integration-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -115,7 +133,7 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Load cached venv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .venv
           key: venv-${{ runner.os }}-3.12-${{ hashFiles('**/poetry.lock') }}
@@ -285,10 +303,10 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -300,7 +318,7 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Load cached venv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .venv
           key: venv-${{ runner.os }}-3.12-${{ hashFiles('**/poetry.lock') }}
