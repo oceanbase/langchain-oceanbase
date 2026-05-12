@@ -62,8 +62,8 @@ MIGRATIONS = [
     """CREATE TABLE IF NOT EXISTS checkpoint_blobs (
         thread_id VARCHAR(255) NOT NULL,
         checkpoint_ns VARCHAR(255) NOT NULL DEFAULT '',
-        channel VARCHAR(255) NOT NULL,
-        version VARCHAR(255) NOT NULL,
+        channel VARCHAR(128) NOT NULL,
+        version VARCHAR(128) NOT NULL,
         `type` VARCHAR(255) NOT NULL,
         `blob` LONGBLOB,
         PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
@@ -72,8 +72,8 @@ MIGRATIONS = [
     """CREATE TABLE IF NOT EXISTS checkpoint_writes (
         thread_id VARCHAR(255) NOT NULL,
         checkpoint_ns VARCHAR(255) NOT NULL DEFAULT '',
-        checkpoint_id VARCHAR(255) NOT NULL,
-        task_id VARCHAR(255) NOT NULL,
+        checkpoint_id VARCHAR(128) NOT NULL,
+        task_id VARCHAR(128) NOT NULL,
         idx INT NOT NULL,
         channel VARCHAR(255) NOT NULL,
         `type` VARCHAR(255),

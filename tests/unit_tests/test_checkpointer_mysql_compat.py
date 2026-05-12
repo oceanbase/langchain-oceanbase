@@ -47,6 +47,17 @@ def test_index_migrations_avoid_mysql_unsupported_if_not_exists() -> None:
     assert all("IF NOT EXISTS" not in migration for migration in index_migrations)
 
 
+def test_mysql_primary_keys_fit_innodb_utf8mb4_index_limit() -> None:
+    """Composite primary key column widths should stay within MySQL's key limit."""
+    checkpoint_blobs = MIGRATIONS[2]
+    checkpoint_writes = MIGRATIONS[3]
+
+    assert "channel VARCHAR(128)" in checkpoint_blobs
+    assert "version VARCHAR(128)" in checkpoint_blobs
+    assert "checkpoint_id VARCHAR(128)" in checkpoint_writes
+    assert "task_id VARCHAR(128)" in checkpoint_writes
+
+
 class _FakeResult:
     def __init__(self, row: tuple[int] | None = None) -> None:
         self._row = row

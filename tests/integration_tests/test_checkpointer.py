@@ -93,13 +93,14 @@ def seekdb_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def checkpointer_factory(seekdb_path: str):
+def checkpointer_factory(request: pytest.FixtureRequest):
     """Create a new saver instance against the configured backend."""
     if _ci_mysql_server_available():
         return lambda: create_checkpointer(
             connection_args=_mysql_connection_args_from_env()
         )
 
+    seekdb_path = request.getfixturevalue("seekdb_path")
     return lambda: create_checkpointer(path=seekdb_path)
 
 
