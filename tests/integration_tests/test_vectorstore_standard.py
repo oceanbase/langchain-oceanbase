@@ -29,10 +29,30 @@ def _ci_db_type() -> str:
     return os.getenv("OB_CI_DB_TYPE", "").strip().lower()
 
 
+def _external_db_env_configured() -> bool:
+    return any(
+        os.getenv(env_var)
+        for env_var in (
+            "SEEKDB_HOST",
+            "SEEKDB_PORT",
+            "SEEKDB_USER",
+            "SEEKDB_PASSWORD",
+            "SEEKDB_DB",
+            "OB_HOST",
+            "OB_PORT",
+            "OB_USER",
+            "OB_PASSWORD",
+            "OB_DB",
+        )
+    )
+
+
 def _use_embedded_seekdb() -> bool:
     db_type = _ci_db_type()
     if db_type:
         return db_type == "embedded-seekdb"
+    if _external_db_env_configured():
+        return False
     return _embedded_seekdb_runtime_available()
 
 
@@ -55,6 +75,32 @@ def _embedded_seekdb_path(
         yield str(root / "seekdb_data")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_use_embedded_seekdb_prefers_explicit_ci_selector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OB_CI_DB_TYPE", "embedded-seekdb")
+    monkeypatch.setenv("OB_HOST", "external-db")
+    monkeypatch.setattr(
+        "tests.integration_tests.test_vectorstore_standard._embedded_seekdb_runtime_available",
+        lambda: False,
+    )
+
+    assert _use_embedded_seekdb() is True
+
+
+def test_use_embedded_seekdb_prefers_external_env_when_unspecified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OB_CI_DB_TYPE", raising=False)
+    monkeypatch.setenv("OB_HOST", "external-db")
+    monkeypatch.setattr(
+        "tests.integration_tests.test_vectorstore_standard._embedded_seekdb_runtime_available",
+        lambda: True,
+    )
+
+    assert _use_embedded_seekdb() is False
 
 
 class TestOceanbaseVectorStoreStandard(VectorStoreIntegrationTests):

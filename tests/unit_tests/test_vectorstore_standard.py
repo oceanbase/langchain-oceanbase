@@ -147,7 +147,9 @@ class TestOceanbaseVectorStoreUnit:
         vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
 
         mock_result = MagicMock()
-        mock_result.fetchall.side_effect = ResourceClosedError("no rows")
+        mock_result.fetchall.side_effect = ResourceClosedError(
+            "This result object does not return rows. It has been closed automatically."
+        )
         mock_client.ann_search.return_value = mock_result
 
         docs = vectorstore.similarity_search("query", k=1)
@@ -159,9 +161,24 @@ class TestOceanbaseVectorStoreUnit:
     ):
         """Missing IDs should return an empty list instead of surfacing driver details."""
         mock_result = MagicMock()
-        mock_result.fetchall.side_effect = ResourceClosedError("no rows")
+        mock_result.fetchall.side_effect = ResourceClosedError(
+            "This result object does not return rows. It has been closed automatically."
+        )
         mock_client.get.return_value = mock_result
 
         docs = vectorstore.get_by_ids(["missing"])
 
         assert docs == []
+
+    def test_similarity_search_reraises_unexpected_resource_closed_error(
+        self, vectorstore, mock_client
+    ):
+        """Unexpected driver failures should not be misreported as empty results."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        mock_result = MagicMock()
+        mock_result.fetchall.side_effect = ResourceClosedError("unexpected close")
+        mock_client.ann_search.return_value = mock_result
+
+        with pytest.raises(ResourceClosedError, match="unexpected close"):
+            vectorstore.similarity_search("query", k=1)

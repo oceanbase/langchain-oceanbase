@@ -80,6 +80,10 @@ def _neg_inner_product_similarity(distance: float) -> float:
     return -distance
 
 
+def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
+    return "does not return rows" in str(error)
+
+
 class OceanbaseVectorStore(VectorStore):
     """Oceanbase vector store integration.
 
@@ -534,8 +538,12 @@ class OceanbaseVectorStore(VectorStore):
         """
         try:
             rows = results.fetchall()
-        except ResourceClosedError:
-            return []
+        except ResourceClosedError as exc:
+            # Embedded SeekDB can surface empty ANN / GET results as a closed
+            # SQLAlchemy result instead of an iterable row set.
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
 
         if include_score:
             return [
@@ -728,8 +736,10 @@ class OceanbaseVectorStore(VectorStore):
         documents_by_id: dict[str, Document] = {}
         try:
             rows = res.fetchall()
-        except ResourceClosedError:
-            return []
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
 
         for row in rows:
             document_id = str(row[2])

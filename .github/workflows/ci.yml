@@ -244,12 +244,13 @@ jobs:
               print(f"{name}={md.version(name)}")
           PY
 
-      - name: Run checkpoint unit tests
+      - name: Run unit tests
         run: |
           set -e
           poetry run pytest \
             tests/unit_tests/test_checkpointer_async_api.py \
             tests/unit_tests/test_legacy_checkpoint_saver.py \
+            tests/unit_tests/test_vectorstore_standard.py \
             -v
 
       - name: Run comprehensive tests
