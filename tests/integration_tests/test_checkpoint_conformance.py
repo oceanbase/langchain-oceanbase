@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import uuid
@@ -27,13 +28,20 @@ def _embedded_seekdb_runtime_available() -> bool:
     return True
 
 
-pytestmark = pytest.mark.skipif(
-    not _embedded_seekdb_runtime_available(),
-    reason=(
-        "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
-        "or pip install 'pyobvector[pyseekdb]')"
-    ),
-)
+def _ci_oceanbase_server_available() -> bool:
+    """Return True when CI provisioned a live OceanBase server for tests."""
+    return os.getenv("OB_CI_DB_TYPE", "").strip().lower() == "oceanbase"
+
+
+def _oceanbase_connection_args_from_env() -> dict[str, str]:
+    """Build OceanBase server connection arguments from the shared CI contract."""
+    return {
+        "host": os.getenv("OB_HOST", "127.0.0.1"),
+        "port": os.getenv("OB_PORT", "2881"),
+        "user": os.getenv("OB_USER", "root@test"),
+        "password": os.getenv("OB_PASSWORD", ""),
+        "db_name": os.getenv("OB_DB", "test"),
+    }
 
 
 @checkpointer_test(name="OceanBaseCheckpointSaver")
@@ -48,11 +56,53 @@ async def oceanbase_checkpointer():
         shutil.rmtree(root, ignore_errors=True)
 
 
+@checkpointer_test(name="OceanBaseCheckpointSaver-Server")
+async def oceanbase_server_checkpointer():
+    if not _ci_oceanbase_server_available():
+        pytest.skip("OceanBase server conformance runs only in the oceanbase CI matrix.")
+
+    saver = OceanBaseCheckpointSaver(
+        connection_args=_oceanbase_connection_args_from_env(),
+    )
+    saver.setup()
+    yield saver
+
+
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not _embedded_seekdb_runtime_available(),
+    reason=(
+        "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
+        "or pip install 'pyobvector[pyseekdb]')"
+    ),
+)
 async def test_checkpoint_conformance_base() -> None:
     """OceanBaseCheckpointSaver should satisfy the base conformance suite."""
     report = await validate(
         oceanbase_checkpointer,
+        capabilities={
+            "put",
+            "put_writes",
+            "get_tuple",
+            "list",
+            "delete_thread",
+            "prune",
+        },
+        progress=ProgressCallbacks.verbose(),
+    )
+    report.print_report()
+    assert report.passed_all_base()
+    assert report.results["prune"].passed is True
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_conformance_oceanbase_server() -> None:
+    """OceanBaseCheckpointSaver should satisfy the base suite against a real server."""
+    if not _ci_oceanbase_server_available():
+        pytest.skip("OceanBase server conformance runs only in the oceanbase CI matrix.")
+
+    report = await validate(
+        oceanbase_server_checkpointer,
         capabilities={
             "put",
             "put_writes",
