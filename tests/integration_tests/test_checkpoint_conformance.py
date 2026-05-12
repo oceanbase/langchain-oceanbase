@@ -28,9 +28,19 @@ def _embedded_seekdb_runtime_available() -> bool:
     return True
 
 
+def _ci_db_type() -> str:
+    """Return the live database type provisioned by the CI matrix."""
+    return os.getenv("OB_CI_DB_TYPE", "").strip().lower()
+
+
 def _ci_oceanbase_server_available() -> bool:
     """Return True when CI provisioned a live OceanBase server for tests."""
-    return os.getenv("OB_CI_DB_TYPE", "").strip().lower() == "oceanbase"
+    return _ci_db_type() == "oceanbase"
+
+
+def _ci_seekdb_server_available() -> bool:
+    """Return True when CI provisioned a standalone SeekDB server for tests."""
+    return _ci_db_type() == "seekdb"
 
 
 def _oceanbase_connection_args_from_env() -> dict[str, str]:
@@ -60,6 +70,18 @@ async def oceanbase_checkpointer():
 async def oceanbase_server_checkpointer():
     if not _ci_oceanbase_server_available():
         pytest.skip("OceanBase server conformance runs only in the oceanbase CI matrix.")
+
+    saver = OceanBaseCheckpointSaver(
+        connection_args=_oceanbase_connection_args_from_env(),
+    )
+    saver.setup()
+    yield saver
+
+
+@checkpointer_test(name="OceanBaseCheckpointSaver-SeekDB-Server")
+async def seekdb_server_checkpointer():
+    if not _ci_seekdb_server_available():
+        pytest.skip("SeekDB server conformance runs only in the seekdb CI matrix.")
 
     saver = OceanBaseCheckpointSaver(
         connection_args=_oceanbase_connection_args_from_env(),
@@ -103,6 +125,29 @@ async def test_checkpoint_conformance_oceanbase_server() -> None:
 
     report = await validate(
         oceanbase_server_checkpointer,
+        capabilities={
+            "put",
+            "put_writes",
+            "get_tuple",
+            "list",
+            "delete_thread",
+            "prune",
+        },
+        progress=ProgressCallbacks.verbose(),
+    )
+    report.print_report()
+    assert report.passed_all_base()
+    assert report.results["prune"].passed is True
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_conformance_seekdb_server() -> None:
+    """OceanBaseCheckpointSaver should satisfy the base suite against standalone SeekDB."""
+    if not _ci_seekdb_server_available():
+        pytest.skip("SeekDB server conformance runs only in the seekdb CI matrix.")
+
+    report = await validate(
+        seekdb_server_checkpointer,
         capabilities={
             "put",
             "put_writes",
