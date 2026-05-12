@@ -60,18 +60,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        db-type: [oceanbase, seekdb]
         include:
+          - db-type: embedded-seekdb
+            port: ""
+            user: ""
+            image: ""
+            mode: ""
+            runs-comprehensive: false
           - db-type: oceanbase
             port: 2881
             user: root@test
             image: oceanbase/oceanbase-ce:4.3.5-lts
             mode: mini
+            runs-comprehensive: true
           - db-type: seekdb
             port: 2882
             user: root
             image: oceanbase/seekdb
             mode: mini
+            runs-comprehensive: true
 
     steps:
       - name: Check out code
@@ -100,6 +107,7 @@ jobs:
           poetry install --with test,test_integration --no-interaction
 
       - name: Start ${{ matrix.db-type }} container
+        if: matrix.image != ''
         run: |
           set -e
           echo "Starting ${{ matrix.db-type }} container..."
@@ -172,7 +180,17 @@ jobs:
             exit 1
           fi
 
+      - name: Report LangGraph dependency versions
+        run: |
+          set -e
+          poetry run python - <<'PY'
+          import importlib.metadata as md
+          for name in ("langgraph", "langgraph-checkpoint", "langchain-core", "langsmith", "pydantic"):
+              print(f"{name}={md.version(name)}")
+          PY
+
       - name: Run comprehensive tests
+        if: matrix.runs-comprehensive
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
@@ -194,14 +212,34 @@ jobs:
           OB_DB: test
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
-          set -e
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/integration-${{ matrix.db-type }}.xml"
           echo "Running integration tests with ${{ matrix.db-type }}..."
-          poetry run pytest tests/integration_tests/ -v
+          poetry run pytest tests/integration_tests/ -v --junitxml="$report_path"
+          python - "$report_path" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          report_path = sys.argv[1]
+          root = ET.parse(report_path).getroot()
+          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+          failures = sum(int(suite.attrib.get("failures", 0)) for suite in suites)
+          errors = sum(int(suite.attrib.get("errors", 0)) for suite in suites)
+          skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in suites)
+          tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
+          print(
+              f"JUnit summary: tests={tests} failures={failures} errors={errors} skipped={skipped}"
+          )
+          if failures or errors:
+              raise SystemExit(1)
+          PY
 
       - name: Cleanup
         if: always()
         run: |
-          docker rm -f "langchain_${{ matrix.db-type }}_test" || true
+          if [ -n "${{ matrix.image }}" ]; then
+            docker rm -f "langchain_${{ matrix.db-type }}_test" || true
+          fi
 
   test-embedding:
     name: Embedding Vectorization Test
