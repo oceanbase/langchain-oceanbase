@@ -643,7 +643,9 @@ class OceanbaseVectorStore(VectorStore):
             raise ValueError("Length of ids must match number of texts.")
         else:
             ids = [
-                str(candidate_id) if candidate_id not in (None, "") else str(uuid.uuid4())
+                str(candidate_id)
+                if candidate_id not in (None, "")
+                else str(uuid.uuid4())
                 for candidate_id in ids
             ]
 
