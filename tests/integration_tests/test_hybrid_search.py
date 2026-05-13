@@ -1,39 +1,23 @@
-"""
-Tests for OceanBase Vector Store hybrid search capabilities.
+from __future__ import annotations
 
-This module contains comprehensive tests for the hybrid search features including:
-- Sparse vector search with various configurations
-- Full-text search with different query types
-- Advanced hybrid search combining multiple modalities
-- Result fusion algorithm validation
-- Performance and edge case testing
-- Error handling for unsupported configurations
-- Integration tests with real-world scenarios
-"""
+"""Tests for OceanBase Vector Store hybrid search capabilities."""
 
-import os
 import time
 
 import pytest
 from langchain_core.documents import Document
 
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
+from langchain_oceanbase.exceptions import (
+    OceanBaseConfigurationError,
+    OceanBaseVectorDimensionError,
+)
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+from tests.integration_tests._backend_utils import unique_table_name
 
 
 class TestHybridSearch:
     """Test class for hybrid search functionality."""
-
-    @pytest.fixture
-    def connection_args(self):
-        """Standard connection arguments for OceanBase/SeekDB."""
-        return {
-            "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
-            "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
-            "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
-            "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
-            "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
-        }
 
     @pytest.fixture
     def embeddings(self):
@@ -41,19 +25,55 @@ class TestHybridSearch:
         return DefaultEmbeddingFunctionAdapter()
 
     @pytest.fixture
-    def hybrid_vectorstore(self, connection_args, embeddings):
+    def hybrid_store_factory(
+        self,
+        seekdb_capable_backend: str,
+        integration_backend_name: str,
+        integration_connection_args: dict[str, str],
+        integration_client_kwargs: dict[str, str],
+        embeddings,
+    ):
+        stores: list[OceanbaseVectorStore] = []
+
+        def factory(**kwargs) -> OceanbaseVectorStore:
+            store = OceanbaseVectorStore(
+                embedding_function=kwargs.pop("embedding_function", embeddings),
+                table_name=kwargs.pop(
+                    "table_name",
+                    unique_table_name("hybrid_search_test"),
+                ),
+                connection_args=integration_connection_args,
+                vidx_metric_type=kwargs.pop("vidx_metric_type", "l2"),
+                index_type=kwargs.pop("index_type", "FLAT"),
+                drop_old=kwargs.pop("drop_old", True),
+                embedding_dim=kwargs.pop("embedding_dim", 384),
+                **integration_client_kwargs,
+                **kwargs,
+            )
+            stores.append(store)
+            return store
+
+        yield factory
+
+        for store in stores:
+            try:
+                store.obvector.drop_table_if_exist(store.table_name)
+            except Exception:
+                pass
+
+    @pytest.fixture
+    def hybrid_vectorstore(self, hybrid_store_factory, integration_backend_name: str):
         """Create a vector store with hybrid search capabilities."""
-        return OceanbaseVectorStore(
-            embedding_function=embeddings,
-            table_name="hybrid_search_test",
-            connection_args=connection_args,
-            vidx_metric_type="l2",
-            index_type="FLAT",
-            include_sparse=True,
-            include_fulltext=True,
-            drop_old=True,
-            embedding_dim=384,
-        )
+        try:
+            return hybrid_store_factory(
+                include_sparse=True,
+                include_fulltext=True,
+            )
+        except Exception as exc:
+            pytest.skip(
+                f"Hybrid search requires sparse/fulltext support on "
+                f"{integration_backend_name}: {exc}"
+            )
 
     @pytest.fixture
     def sample_documents(self):
@@ -294,39 +314,39 @@ class TestHybridSearch:
         assert len(results) >= 1
         assert all(isinstance(doc, Document) for doc in results)
 
-    def test_error_handling_sparse_not_enabled(self, connection_args, embeddings):
+    def test_error_handling_sparse_not_enabled(self, hybrid_store_factory, embeddings):
         """Test error handling when sparse vector support is not enabled."""
-        vector_store = OceanbaseVectorStore(
+        vector_store = hybrid_store_factory(
             embedding_function=embeddings,
-            table_name="test_vector_no_sparse",
-            connection_args=connection_args,
+            table_name=unique_table_name("test_vector_no_sparse"),
             include_sparse=False,
             include_fulltext=False,
-            drop_old=True,
-            embedding_dim=384,
             index_type="FLAT",
         )
 
-        with pytest.raises(ValueError, match="Sparse vector support not enabled"):
+        with pytest.raises(
+            OceanBaseConfigurationError,
+            match="Sparse vector support is not enabled",
+        ):
             vector_store.add_sparse_documents(
                 documents=[Document(page_content="test")],
                 sparse_embeddings=[{1: 0.5}],
             )
 
-    def test_error_handling_fulltext_not_enabled(self, connection_args, embeddings):
+    def test_error_handling_fulltext_not_enabled(self, hybrid_store_factory, embeddings):
         """Test error handling when full-text search support is not enabled."""
-        vector_store = OceanbaseVectorStore(
+        vector_store = hybrid_store_factory(
             embedding_function=embeddings,
-            table_name="test_vector_no_fulltext",
-            connection_args=connection_args,
+            table_name=unique_table_name("test_vector_no_fulltext"),
             include_sparse=False,
             include_fulltext=False,
-            drop_old=True,
-            embedding_dim=384,
             index_type="FLAT",
         )
 
-        with pytest.raises(ValueError, match="Full-text search support not enabled"):
+        with pytest.raises(
+            OceanBaseConfigurationError,
+            match="Full-text search support is not enabled",
+        ):
             vector_store.similarity_search_with_fulltext(
                 query="test query",
                 fulltext_query="fulltext search",
@@ -335,7 +355,8 @@ class TestHybridSearch:
     def test_error_handling_no_search_modality(self, hybrid_vectorstore):
         """Test error handling when no search modality is provided."""
         with pytest.raises(
-            ValueError, match="At least one search modality must be provided"
+            OceanBaseConfigurationError,
+            match="At least one search modality must be provided",
         ):
             hybrid_vectorstore.advanced_hybrid_search(k=10)
 
@@ -556,7 +577,7 @@ class TestHybridSearch:
                 sparse_embeddings=[{"invalid": "sparse_vector"}],
             )
 
-        with pytest.raises(ValueError):
+        with pytest.raises(OceanBaseVectorDimensionError):
             hybrid_vectorstore.add_sparse_documents(
                 documents=[
                     Document(page_content="doc1"),
@@ -625,7 +646,10 @@ class TestHybridSearch:
 
     def test_advanced_hybrid_search_weight_validation(self, hybrid_vectorstore):
         """Test weight validation in advanced hybrid search."""
-        with pytest.raises(ValueError, match="Modality weights must sum to 1.0"):
+        with pytest.raises(
+            OceanBaseConfigurationError,
+            match="Modality weights must sum to 1.0",
+        ):
             hybrid_vectorstore.advanced_hybrid_search(
                 vector_query="test",
                 modality_weights={
