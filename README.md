@@ -16,6 +16,12 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
+## What's New in 0.4.0
+
+- **LangGraph checkpointing is now a primary workflow**: `OceanBaseCheckpointSaver` is the recommended way to persist graph state, resume threads, and support time-travel in LangGraph applications.
+- **Storage support is explicit by backend**: OceanBase, SeekDB, embedded SeekDB, and MySQL now have clearer capability boundaries in CI and documentation.
+- **SeekDB coverage is broader**: server-backed SeekDB and embedded SeekDB are both covered for the supported vector and history scenarios.
+
 ## LangChain Integration
 
 [![LangChain](https://img.shields.io/badge/LangChain-Integration-blue)](https://python.langchain.com/docs/integrations/vectorstores/oceanbase/)
@@ -27,8 +33,26 @@ Support for `ChatMessageHistory` is provided as an additional integration and is
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
+## 0.4.0 Support Matrix
+
+| Backend | LangGraph checkpoint | Vector store | Chat message history | Hybrid search | Notes |
+| --- | --- | --- | --- | --- | --- |
+| OceanBase | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
+| SeekDB (server) | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including the current AI function test coverage in CI. |
+| Embedded SeekDB | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
+| MySQL | Yes | No | No | No | Checkpoint-focused backend only; vector and search features are out of scope. |
+
+### Recommended by Use Case
+
+- **LangGraph state persistence**: use OceanBase, SeekDB, embedded SeekDB, or MySQL depending on your operational requirements.
+- **Vector store and retrieval workflows**: use OceanBase, SeekDB server, or embedded SeekDB.
+- **Hybrid retrieval with dense + sparse + full-text search**: use OceanBase, SeekDB server, or embedded SeekDB.
+- **Simple checkpoint-only deployments**: MySQL remains supported for checkpoint storage, but not vector features.
+
 ## Features
 
+* **LangGraph Checkpointing**: Persist LangGraph conversation checkpoints with `OceanBaseCheckpointSaver`, including resume, replay, and time-travel workflows for multi-thread graph state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **Vector Storage**: Store embeddings from LangChain models in OceanBase, SeekDB, or embedded SeekDB with automatic table creation and index management.
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
   * **No API Keys Required**: Uses local ONNX models, no external API calls needed
   * **Quick Start**: Perfect for rapid prototyping and testing
@@ -36,7 +60,6 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
   * **Batch Processing**: Supports efficient batch embedding generation
   * **Automatic Integration**: Can be automatically used in `OceanbaseVectorStore` by setting `embedding_function=None`
   * **Technical Specs**: Model `all-MiniLM-L6-v2`, 384 dimensions, ONNX Runtime inference
-* **Vector Storage**: Store embeddings from any LangChain embedding model in OceanBase with automatic table creation and index management.
 * **Embedded SeekDB (optional)**: Run local embedded [SeekDB](https://github.com/oceanbase/pyseekdb) through pyobvector (`path=` or `pyseekdb_client=` on `OceanbaseVectorStore`) without OceanBase; requires `pyobvector[pyseekdb]` or a recent `pyseekdb` that installs `pylibseekdb`. See [docs/vectorstores.md#embedded-seekdb-optional](./docs/vectorstores.md#embedded-seekdb-optional) and [examples/embedded_seekdb_vectorstore.py](./examples/embedded_seekdb_vectorstore.py).
 * **Similarity Search**: Perform efficient similarity searches on vector data with multiple distance metrics (L2, cosine, inner product).
 * **Hybrid Search**: Combine vector search with sparse vector search and full-text search for improved results with configurable weights.
@@ -45,8 +68,7 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 * **Sparse Embeddings**: Native support for sparse vector embeddings with BM25-like functionality.
 * **Advanced Filtering**: Built-in support for metadata filtering and complex query conditions.
 * **Async Support**: Full support for async operations and high-concurrency scenarios.
-* **LangGraph Checkpointer** (0.3.3+): Persist LangGraph conversation checkpoints in OceanBase via `OceanBaseCheckpointSaver`; supports time-travel and multi-thread state. This is the supported checkpoint API for new code. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
-* **Custom Exceptions** (0.3.3+): `OceanBaseError`, `OceanBaseConnectionError`, `OceanBaseVectorDimensionError`, `OceanBaseIndexError`, `OceanBaseVersionError`, `OceanBaseConfigurationError` with troubleshooting links in messages.
+* **Custom Exceptions**: `OceanBaseError`, `OceanBaseConnectionError`, `OceanBaseVectorDimensionError`, `OceanBaseIndexError`, `OceanBaseVersionError`, `OceanBaseConfigurationError` with troubleshooting links in messages.
 
 ## Installation
 
