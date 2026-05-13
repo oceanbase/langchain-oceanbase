@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-This package contains the LangChain integration with OceanBase. **Current version: 0.3.3**
+This package contains the LangChain integration with OceanBase. **Current version: 0.4.0**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -61,7 +61,7 @@ pip install -U langchain-oceanbase
 - pyobvector >=0.2.0 (required for database client)
 - pyseekdb >=0.1.0 (required dependency; use **>=1.2** on supported platforms for **embedded SeekDB** and the `pylibseekdb` runtime)
 
-> **Tip**: The current version (0.3.3) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
+> **Tip**: The current version (0.4.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
