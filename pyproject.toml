@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "langchain-oceanbase"
-version = "0.3.3"
+version = "0.4.0"
 description = "An integration package connecting OceanBase and LangChain"
 authors = ["shanhaikang.shk <shanhaikang.shk@oceanbase.com>"]
 readme = "README.md"
@@ -21,9 +21,9 @@ disallow_untyped_defs = "True"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-langchain-core = "^0.3.0"
-langgraph = ">=0.2.0,<1.0.0"
-langgraph-checkpoint = ">=2.1.0,<5.0.0"
+langchain-core = ">=0.3.0,<2.0.0"
+langgraph = ">=0.6.11,<2.0.0"
+langgraph-checkpoint = ">=3.0.1,<5.0.0"
 # >=1.2: unified SeekDB client. Constrain pylibseekdb so the lock resolves to 1.1+ (manylinux + macOS arm64 wheels);
 # 1.0.0.post1 is Linux-wheel-only metadata and breaks Poetry on macOS arm64 / some CI installers.
 pyseekdb = ">=1.2.0.post1,<3"
@@ -80,6 +80,7 @@ pytest-asyncio = "^0.23.2"
 pytest-cov = ">=4.1,<8.0"
 pytest-socket = "^0.7.0"
 pytest-watcher = ">=0.3.4,<0.7.0"
+langgraph-checkpoint-conformance = ">=0.0.2,<0.1.0"
 langchain-tests = "==0.3.22"
 langchain-community = "^0.3.12"
 dashscope = "^1.20.14"
@@ -93,4 +94,4 @@ codespell = "^2.2.6"
 ruff = ">=0.5,<0.16"
 
 [tool.poetry.group.typing.dependencies]
-mypy = "^1.10"
+mypy = ">=1.10,<3.0"

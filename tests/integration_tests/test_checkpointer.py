@@ -1,17 +1,16 @@
+# mypy: disable-error-code="import-untyped,typeddict-unknown-key,arg-type,no-untyped-def,misc"
 """Integration tests for OceanBaseCheckpointSaver.
 
 These tests verify that OceanBaseCheckpointSaver correctly implements
 the BaseCheckpointSaver interface for LangGraph persistence.
 
-Prerequisites:
-    - Running OceanBase instance
-    - Set environment variables:
-        OCEANBASE_HOST, OCEANBASE_PORT, OCEANBASE_USER,
-        OCEANBASE_PASSWORD, OCEANBASE_DB
+They run against embedded SeekDB when the native runtime is available.
 """
 
 import os
+import shutil
 import uuid
+from pathlib import Path
 from typing import Annotated, TypedDict
 
 import pytest
@@ -27,21 +26,88 @@ from langchain_oceanbase import OceanBaseCheckpointSaver
 # ==============================================================================
 
 
-def get_connection_args():
-    """Get OceanBase connection arguments from environment."""
+def _embedded_seekdb_runtime_available() -> bool:
+    try:
+        import pylibseekdb  # noqa: F401
+    except ImportError:
+        return False
+    try:
+        import pyseekdb  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _ci_db_type() -> str:
+    """Return the live database type provisioned by the CI matrix."""
+    return os.getenv("OB_CI_DB_TYPE", "").strip().lower()
+
+
+def _ci_mysql_server_available() -> bool:
+    """Return True when CI provisioned a live MySQL server for tests."""
+    return _ci_db_type() == "mysql"
+
+
+def _mysql_connection_args_from_env() -> dict[str, str]:
+    """Build MySQL server connection arguments from the shared CI contract."""
     return {
-        "host": os.getenv("OCEANBASE_HOST", "127.0.0.1"),
-        "port": os.getenv("OCEANBASE_PORT", "2881"),
-        "user": os.getenv("OCEANBASE_USER", "root@test"),
-        "password": os.getenv("OCEANBASE_PASSWORD", ""),
-        "db_name": os.getenv("OCEANBASE_DB", "test"),
+        "host": os.getenv("OB_HOST", "127.0.0.1"),
+        "port": os.getenv("OB_PORT", "3306"),
+        "user": os.getenv("OB_USER", "root"),
+        "password": os.getenv("OB_PASSWORD", ""),
+        "db_name": os.getenv("OB_DB", "test"),
     }
 
 
+def create_checkpointer(
+    *,
+    path: str | None = None,
+    connection_args: dict[str, str] | None = None,
+) -> OceanBaseCheckpointSaver:
+    """Create a checkpointer backed by the selected test backend."""
+    kwargs = {}
+    if path is not None:
+        kwargs["path"] = path
+    return OceanBaseCheckpointSaver(
+        connection_args=connection_args or {"db_name": "test"},
+        **kwargs,
+    )
+
+
 @pytest.fixture
-def checkpointer():
+def seekdb_path(tmp_path: Path) -> str:
+    """Create an isolated embedded SeekDB path for a test."""
+    if _ci_mysql_server_available():
+        pytest.skip("Embedded SeekDB path fixture is not used in the mysql CI matrix.")
+    if not _embedded_seekdb_runtime_available():
+        pytest.skip(
+            "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
+            "or pip install 'pyobvector[pyseekdb]')"
+        )
+    root = tmp_path / f"checkpoint_seekdb_{uuid.uuid4().hex}"
+    root.mkdir(parents=True)
+    try:
+        yield str(root / "seekdb_data")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.fixture
+def checkpointer_factory(request: pytest.FixtureRequest):
+    """Create a new saver instance against the configured backend."""
+    if _ci_mysql_server_available():
+        return lambda: create_checkpointer(
+            connection_args=_mysql_connection_args_from_env()
+        )
+
+    seekdb_path = request.getfixturevalue("seekdb_path")
+    return lambda: create_checkpointer(path=seekdb_path)
+
+
+@pytest.fixture
+def checkpointer(checkpointer_factory):
     """Create a checkpointer for testing."""
-    saver = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+    saver = checkpointer_factory()
     saver.setup()
     return saver
 
@@ -60,9 +126,9 @@ def unique_thread_id():
 class TestOceanBaseCheckpointSaverSetup:
     """Tests for checkpointer setup and initialization."""
 
-    def test_setup_creates_tables(self):
+    def test_setup_creates_tables(self, checkpointer_factory):
         """Test that setup() creates required tables."""
-        saver = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        saver = checkpointer_factory()
 
         # Setup should not raise
         saver.setup()
@@ -71,8 +137,7 @@ class TestOceanBaseCheckpointSaverSetup:
         saver.setup()
 
     @pytest.mark.skip(
-        reason="This test requires a local OceanBase instance at localhost:2881. "
-        "Run manually when local OceanBase is available."
+        reason="Default connection args target a standalone OceanBase server, not embedded SeekDB."
     )
     def test_default_connection_args(self):
         """Test that default connection args are used when none provided.
@@ -425,10 +490,10 @@ class TestLangGraphIntegration:
         # Cleanup
         checkpointer.delete_thread(unique_thread_id)
 
-    def test_state_recovery_after_restart(self, unique_thread_id):
+    def test_state_recovery_after_restart(self, unique_thread_id, checkpointer_factory):
         """Test that state can be recovered after creating a new checkpointer."""
         # First session
-        checkpointer1 = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        checkpointer1 = checkpointer_factory()
         checkpointer1.setup()
 
         builder = StateGraph(ConversationState)
@@ -445,7 +510,7 @@ class TestLangGraphIntegration:
         )
 
         # Second session (simulating restart)
-        checkpointer2 = OceanBaseCheckpointSaver(connection_args=get_connection_args())
+        checkpointer2 = checkpointer_factory()
         checkpointer2.setup()
 
         graph2 = builder.compile(checkpointer=checkpointer2)

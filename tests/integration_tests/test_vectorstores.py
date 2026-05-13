@@ -1,4 +1,5 @@
-import os
+from __future__ import annotations
+
 from typing import Generator
 
 import pytest
@@ -10,35 +11,64 @@ from langchain_tests.integration_tests import (
 
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+from tests.integration_tests._backend_utils import unique_table_name, use_embedded_seekdb
 
 EMBEDDING_SIZE = 6
 
 
+@pytest.fixture
+def vectorstore_factory(
+    seekdb_capable_backend: str,
+    integration_connection_args: dict[str, str],
+    integration_client_kwargs: dict[str, str],
+    default_vector_index_type: str,
+):
+    stores: list[OceanbaseVectorStore] = []
+
+    def factory(
+        *,
+        embedding_function=None,
+        table_name: str | None = None,
+        embedding_dim: int = 384,
+        vidx_metric_type: str = "l2",
+        index_type: str | None = None,
+        **kwargs,
+    ) -> OceanbaseVectorStore:
+        store = OceanbaseVectorStore(
+            embedding_function=embedding_function or DefaultEmbeddingFunctionAdapter(),
+            table_name=table_name or unique_table_name("integration_test"),
+            connection_args=integration_connection_args,
+            vidx_metric_type=vidx_metric_type,
+            index_type=index_type or default_vector_index_type,
+            drop_old=True,
+            embedding_dim=embedding_dim,
+            **integration_client_kwargs,
+            **kwargs,
+        )
+        stores.append(store)
+        return store
+
+    yield factory
+
+    for store in stores:
+        try:
+            store.obvector.drop_table_if_exist(store.table_name)
+        except Exception:
+            pass
+
+
 class TestOceanbaseVectorStoreSync(VectorStoreIntegrationTests):
     @pytest.fixture()
-    def vectorstore(self) -> Generator[VectorStore, None, None]:  # type: ignore
+    def vectorstore(self, vectorstore_factory) -> Generator[VectorStore, None, None]:  # type: ignore
         """Get an empty vectorstore for unit tests."""
-        connection_args = {
-            "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
-            "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
-            "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
-            "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
-            "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
-        }
-        store = OceanbaseVectorStore(
+        store = vectorstore_factory(
             embedding_function=self.get_embeddings(),
-            table_name="langchain_vector",
-            connection_args=connection_args,
-            vidx_metric_type="l2",
-            drop_old=True,
+            table_name=unique_table_name("langchain_vector"),
             embedding_dim=EMBEDDING_SIZE,
         )
-        # note: store should be EMPTY at this point
-        # if you need to delete data, you may do so here
         try:
             yield store
         finally:
-            # cleanup operations, or deleting data
             pass
 
     @pytest.mark.xfail(reason="UUID is unordered.")
@@ -66,26 +96,9 @@ class TestOceanbaseVectorStoreIntegration:
     """Integration tests for OceanbaseVectorStore"""
 
     @pytest.fixture
-    def vectorstore(self):
+    def vectorstore(self, vectorstore_factory):
         """Create a vectorstore for integration tests"""
-        connection_args = {
-            "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
-            "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
-            "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
-            "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
-            "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
-        }
-        embeddings = DefaultEmbeddingFunctionAdapter()
-
-        store = OceanbaseVectorStore(
-            embedding_function=embeddings,
-            table_name="integration_test",
-            connection_args=connection_args,
-            vidx_metric_type="l2",
-            drop_old=True,
-            embedding_dim=384,
-        )
-        return store
+        return vectorstore_factory()
 
     def test_basic_add_and_search(self, vectorstore):
         """Test basic document addition and search functionality"""
@@ -149,7 +162,12 @@ class TestOceanbaseVectorStoreIntegration:
         assert "Get by IDs test document 2" in all_content_list
         assert "Get by IDs test document 3" in all_content_list
 
-    def test_from_texts_integration(self, vectorstore):
+    def test_from_texts_integration(
+        self,
+        vectorstore,
+        integration_client_kwargs: dict[str, str],
+        default_vector_index_type: str,
+    ):
         """Test from_texts method integration"""
         texts = ["Integration test 1", "Integration test 2", "Integration test 3"]
         metadatas = [{"source": "int1"}, {"source": "int2"}, {"source": "int3"}]
@@ -158,11 +176,13 @@ class TestOceanbaseVectorStoreIntegration:
             texts=texts,
             embedding=vectorstore.embedding_function,
             metadatas=metadatas,
-            table_name="from_texts_integration",
+            table_name=unique_table_name("from_texts_integration"),
             connection_args=vectorstore.connection_args,
             vidx_metric_type="l2",
+            index_type=default_vector_index_type,
             drop_old=True,
             embedding_dim=384,
+            **integration_client_kwargs,
         )
 
         # Verify all texts are present by searching with empty string
@@ -175,17 +195,15 @@ class TestOceanbaseVectorStoreIntegration:
         results = new_vectorstore.similarity_search("test query", k=2)
         assert len(results) >= 1
 
-    def test_different_metric_types(self, vectorstore):
+    def test_different_metric_types(self, vectorstore, vectorstore_factory):
         """Test different metric types"""
         metric_types = ["l2", "inner_product", "cosine"]
 
         for metric_type in metric_types:
-            test_vectorstore = OceanbaseVectorStore(
+            test_vectorstore = vectorstore_factory(
                 embedding_function=vectorstore.embedding_function,
-                table_name=f"metric_test_{metric_type}",
-                connection_args=vectorstore.connection_args,
+                table_name=unique_table_name(f"metric_test_{metric_type}"),
                 vidx_metric_type=metric_type,
-                drop_old=True,
                 embedding_dim=384,
             )
 
@@ -208,17 +226,15 @@ class TestOceanbaseVectorStoreIntegration:
             results = test_vectorstore.similarity_search("test query", k=1)
             assert len(results) >= 1
 
-    def test_different_index_types(self, vectorstore):
+    def test_different_index_types(self, vectorstore, vectorstore_factory):
         """Test different index types"""
-        index_types = ["HNSW", "IVF", "FLAT"]
+        index_types = ["FLAT"] if use_embedded_seekdb() else ["HNSW", "IVF", "FLAT"]
 
         for index_type in index_types:
-            test_vectorstore = OceanbaseVectorStore(
+            test_vectorstore = vectorstore_factory(
                 embedding_function=vectorstore.embedding_function,
-                table_name=f"index_test_{index_type.lower()}",
-                connection_args=vectorstore.connection_args,
+                table_name=unique_table_name(f"index_test_{index_type.lower()}"),
                 vidx_metric_type="l2",
-                drop_old=True,
                 embedding_dim=384,
                 index_type=index_type,
             )

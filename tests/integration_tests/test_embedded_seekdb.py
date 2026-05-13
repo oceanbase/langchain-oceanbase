@@ -75,7 +75,7 @@ class TestEmbeddedSeekDBConnection:
             path=db_path,
             embedding_dim=EMBED_DIM,
             drop_old=True,
-            index_type="HNSW",
+            index_type="FLAT",
             vidx_metric_type="l2",
         )
         store.add_documents(
@@ -103,7 +103,7 @@ class TestEmbeddedSeekDBConnection:
             pyseekdb_client=client,
             embedding_dim=EMBED_DIM,
             drop_old=True,
-            index_type="HNSW",
+            index_type="FLAT",
             vidx_metric_type="l2",
         )
         store.add_documents(

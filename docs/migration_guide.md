@@ -2,6 +2,8 @@
 
 This guide explains how to migrate from `OceanBaseChatMessageHistory` to `OceanBaseCheckpointSaver` for persistent memory in your LangChain/LangGraph applications.
 
+`langchain_oceanbase.checkpoint.OceanBaseSaver` is a legacy implementation kept for backwards compatibility. New code should use `OceanBaseCheckpointSaver`.
+
 ## Why Migrate?
 
 LangChain and LangGraph v1 have moved to a state-based memory model using **checkpointers** instead of the older `ChatMessageHistory` pattern. This new approach offers several advantages:

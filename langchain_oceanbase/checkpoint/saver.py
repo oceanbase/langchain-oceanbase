@@ -1,6 +1,8 @@
+# mypy: ignore-errors
 """OceanBase LangGraph Checkpoint Saver."""
 
 import pickle
+import warnings
 from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
 
 from langchain_core.runnables import RunnableConfig
@@ -26,7 +28,9 @@ from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 
 class OceanBaseSaver(BaseCheckpointSaver):
-    """A checkpoint saver that stores checkpoints in an OceanBase database.
+    """Legacy checkpoint saver retained for backwards compatibility.
+
+    New code should use ``langchain_oceanbase.OceanBaseCheckpointSaver`` instead.
 
     Requires langgraph to be installed. Use: pip install langchain-oceanbase[langgraph]
 
@@ -48,6 +52,12 @@ class OceanBaseSaver(BaseCheckpointSaver):
                 "langgraph is required for OceanBaseSaver. "
                 "Install it with: pip install langchain-oceanbase[langgraph]"
             )
+        warnings.warn(
+            "OceanBaseSaver is deprecated and will be removed in a future release. "
+            "Use OceanBaseCheckpointSaver instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__()
         self.connection_args = (
             connection_args

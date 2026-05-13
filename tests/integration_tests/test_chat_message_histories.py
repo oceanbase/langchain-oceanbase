@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from langchain_core.messages import (
     AIMessage,
@@ -10,25 +8,24 @@ from langchain_core.messages import (
 )
 
 from langchain_oceanbase.chat_message_histories import OceanBaseChatMessageHistory
+from tests.integration_tests._backend_utils import unique_table_name
 
 
 class TestOceanBaseChatMessageHistoryIntegration:
     """Integration tests for OceanBaseChatMessageHistory"""
 
     @pytest.fixture
-    def chat_history(self):
+    def chat_history(
+        self,
+        seekdb_capable_backend: str,
+        integration_connection_args: dict[str, str],
+        integration_client_kwargs: dict[str, str],
+    ):
         """Create a chat history instance for integration tests"""
-        connection_args = {
-            "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
-            "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
-            "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
-            "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
-            "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
-        }
-
         history = OceanBaseChatMessageHistory(
-            table_name="integration_test_chat",
-            connection_args=connection_args,
+            table_name=unique_table_name("integration_test_chat"),
+            connection_args=integration_connection_args,
+            **integration_client_kwargs,
         )
         return history
 
@@ -36,7 +33,13 @@ class TestOceanBaseChatMessageHistoryIntegration:
     def cleanup(self, chat_history):
         """Clean up after each test"""
         yield
-        chat_history.clear()
+        try:
+            chat_history.clear()
+        finally:
+            try:
+                chat_history.obvector.drop_table_if_exist(chat_history.table_name)
+            except Exception:
+                pass
 
     def test_basic_add_and_retrieve_messages(self, chat_history):
         """Test basic message addition and retrieval functionality"""
@@ -295,16 +298,22 @@ class TestOceanBaseChatMessageHistoryIntegration:
         assert retrieved_msg.additional_kwargs["tool_name"] == "weather_api"
         assert retrieved_msg.additional_kwargs["execution_time"] == 1.5
 
-    def test_multiple_sessions_isolation(self, chat_history):
+    def test_multiple_sessions_isolation(
+        self,
+        chat_history,
+        integration_client_kwargs: dict[str, str],
+    ):
         """Test that different sessions don't interfere with each other"""
         # Create two separate chat history instances with different table names
         session1_history = OceanBaseChatMessageHistory(
-            table_name="session1_test",
+            table_name=unique_table_name("session1_test"),
             connection_args=chat_history.connection_args,
+            **integration_client_kwargs,
         )
         session2_history = OceanBaseChatMessageHistory(
-            table_name="session2_test",
+            table_name=unique_table_name("session2_test"),
             connection_args=chat_history.connection_args,
+            **integration_client_kwargs,
         )
 
         try:
@@ -339,8 +348,14 @@ class TestOceanBaseChatMessageHistoryIntegration:
 
         finally:
             # Clean up
-            session1_history.clear()
-            session2_history.clear()
+            for history in (session1_history, session2_history):
+                try:
+                    history.clear()
+                finally:
+                    try:
+                        history.obvector.drop_table_if_exist(history.table_name)
+                    except Exception:
+                        pass
 
     def test_concurrent_message_addition(self, chat_history):
         """Test adding multiple messages in quick succession"""
