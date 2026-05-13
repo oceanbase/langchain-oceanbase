@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import shutil
-import uuid
 from typing import Generator
 
 import pytest
@@ -12,82 +9,23 @@ from langchain_core.vectorstores import VectorStore
 from langchain_tests.integration_tests import VectorStoreIntegrationTests
 
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+from tests.integration_tests._backend_utils import (
+    use_embedded_seekdb,
+    unique_table_name,
+)
 
 EMBEDDING_SIZE = 6
-
-
-def _embedded_seekdb_runtime_available() -> bool:
-    try:
-        import pylibseekdb  # noqa: F401
-        import pyseekdb  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _ci_db_type() -> str:
-    return os.getenv("OB_CI_DB_TYPE", "").strip().lower()
-
-
-def _external_db_env_configured() -> bool:
-    return any(
-        os.getenv(env_var)
-        for env_var in (
-            "SEEKDB_HOST",
-            "SEEKDB_PORT",
-            "SEEKDB_USER",
-            "SEEKDB_PASSWORD",
-            "SEEKDB_DB",
-            "OB_HOST",
-            "OB_PORT",
-            "OB_USER",
-            "OB_PASSWORD",
-            "OB_DB",
-        )
-    )
-
-
-def _use_embedded_seekdb() -> bool:
-    db_type = _ci_db_type()
-    if db_type:
-        return db_type == "embedded-seekdb"
-    if _external_db_env_configured():
-        return False
-    return _embedded_seekdb_runtime_available()
-
-
-def _connection_args_from_env() -> dict[str, str]:
-    return {
-        "host": os.getenv("SEEKDB_HOST") or os.getenv("OB_HOST", "127.0.0.1"),
-        "port": os.getenv("SEEKDB_PORT") or os.getenv("OB_PORT", "2881"),
-        "user": os.getenv("SEEKDB_USER") or os.getenv("OB_USER", "root@test"),
-        "password": os.getenv("SEEKDB_PASSWORD") or os.getenv("OB_PASSWORD", ""),
-        "db_name": os.getenv("SEEKDB_DB") or os.getenv("OB_DB", "test"),
-    }
-
-
-@pytest.fixture(scope="session")
-def _embedded_seekdb_path(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Generator[str, None, None]:
-    root = tmp_path_factory.mktemp("vectorstore_standard_embedded")
-    try:
-        yield str(root / "seekdb_data")
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
 def test_use_embedded_seekdb_prefers_explicit_ci_selector(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OB_CI_DB_TYPE", "embedded-seekdb")
     monkeypatch.setenv("OB_HOST", "external-db")
     monkeypatch.setattr(
-        "tests.integration_tests.test_vectorstore_standard._embedded_seekdb_runtime_available",
+        "tests.integration_tests._backend_utils.embedded_seekdb_runtime_available",
         lambda: False,
     )
 
-    assert _use_embedded_seekdb() is True
+    assert use_embedded_seekdb() is True
 
 
 def test_use_embedded_seekdb_prefers_external_env_when_unspecified(
@@ -96,11 +34,11 @@ def test_use_embedded_seekdb_prefers_external_env_when_unspecified(
     monkeypatch.delenv("OB_CI_DB_TYPE", raising=False)
     monkeypatch.setenv("OB_HOST", "external-db")
     monkeypatch.setattr(
-        "tests.integration_tests.test_vectorstore_standard._embedded_seekdb_runtime_available",
+        "tests.integration_tests._backend_utils.embedded_seekdb_runtime_available",
         lambda: True,
     )
 
-    assert _use_embedded_seekdb() is False
+    assert use_embedded_seekdb() is False
 
 
 class TestOceanbaseVectorStoreStandard(VectorStoreIntegrationTests):
@@ -128,30 +66,22 @@ class TestOceanbaseVectorStoreStandard(VectorStoreIntegrationTests):
 
     @pytest.fixture()
     def vectorstore(
-        self, _embedded_seekdb_path: str
+        self,
+        integration_connection_args: dict[str, str],
+        integration_client_kwargs: dict[str, str],
+        default_vector_index_type: str,
     ) -> Generator[VectorStore, None, None]:  # type: ignore
         """Get an empty vectorstore for standard integration tests."""
-        table_name = f"langchain_vector_standard_{uuid.uuid4().hex[:8]}"
-
-        if _use_embedded_seekdb():
-            store = OceanbaseVectorStore(
-                embedding_function=self.get_embeddings(),
-                table_name=table_name,
-                path=_embedded_seekdb_path,
-                vidx_metric_type="l2",
-                index_type="FLAT",
-                drop_old=True,
-                embedding_dim=EMBEDDING_SIZE,
-            )
-        else:
-            store = OceanbaseVectorStore(
-                embedding_function=self.get_embeddings(),
-                table_name=table_name,
-                connection_args=_connection_args_from_env(),
-                vidx_metric_type="l2",
-                drop_old=True,
-                embedding_dim=EMBEDDING_SIZE,
-            )
+        store = OceanbaseVectorStore(
+            embedding_function=self.get_embeddings(),
+            table_name=unique_table_name("langchain_vector_standard"),
+            connection_args=integration_connection_args,
+            vidx_metric_type="l2",
+            index_type=default_vector_index_type,
+            drop_old=True,
+            embedding_dim=EMBEDDING_SIZE,
+            **integration_client_kwargs,
+        )
 
         try:
             yield store

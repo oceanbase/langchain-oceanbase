@@ -62,6 +62,7 @@ jobs:
       matrix:
         include:
           - name: embedded-seekdb
+            artifact-suffix: embedded-seekdb-base
             db-type: embedded-seekdb
             port: ""
             user: ""
@@ -70,8 +71,12 @@ jobs:
             runs-comprehensive: false
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: ""
           - name: oceanbase
+            artifact-suffix: oceanbase-base
             db-type: oceanbase
             port: 2881
             user: root@test
@@ -80,8 +85,12 @@ jobs:
             runs-comprehensive: true
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: ""
           - name: seekdb
+            artifact-suffix: seekdb-base
             db-type: seekdb
             port: 2882
             user: root
@@ -90,8 +99,12 @@ jobs:
             runs-comprehensive: true
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: tests/integration_tests/test_ai_functions.py
           - name: mysql
+            artifact-suffix: mysql-base
             db-type: mysql
             port: 3306
             user: root
@@ -101,7 +114,11 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: ""
+            chat-history-target: ""
+            hybrid-target: ""
+            ai-functions-target: ""
           - name: embedded-seekdb, latest-checkpoint-stack
+            artifact-suffix: embedded-seekdb-latest
             db-type: embedded-seekdb
             port: ""
             user: ""
@@ -110,8 +127,12 @@ jobs:
             runs-comprehensive: false
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: ""
           - name: oceanbase, latest-checkpoint-stack
+            artifact-suffix: oceanbase-latest
             db-type: oceanbase
             port: 2881
             user: root@test
@@ -120,8 +141,12 @@ jobs:
             runs-comprehensive: false
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: ""
           - name: seekdb, latest-checkpoint-stack
+            artifact-suffix: seekdb-latest
             db-type: seekdb
             port: 2882
             user: root
@@ -130,8 +155,12 @@ jobs:
             runs-comprehensive: false
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
-            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py
+            vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            chat-history-target: tests/integration_tests/test_chat_message_histories.py
+            hybrid-target: tests/integration_tests/test_hybrid_search.py
+            ai-functions-target: ""
           - name: mysql, latest-checkpoint-stack
+            artifact-suffix: mysql-latest
             db-type: mysql
             port: 3306
             user: root
@@ -141,6 +170,9 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: ""
+            chat-history-target: ""
+            hybrid-target: ""
+            ai-functions-target: ""
 
     steps:
       - name: Check out code
@@ -308,17 +340,22 @@ jobs:
           PY
 
       - name: Run unit tests
+        id: unit-tests
+        continue-on-error: true
         run: |
-          set -e
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/unit-tests-${{ matrix.artifact-suffix }}.xml"
           poetry run pytest \
             tests/unit_tests/test_checkpointer_async_api.py \
             tests/unit_tests/test_checkpointer_mysql_compat.py \
             tests/unit_tests/test_legacy_checkpoint_saver.py \
             tests/unit_tests/test_vectorstore_standard.py \
-            -v
+            -v --tb=short --junitxml="$report_path"
 
       - name: Run comprehensive tests
+        id: comprehensive-tests
         if: matrix.runs-comprehensive
+        continue-on-error: true
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
@@ -332,6 +369,8 @@ jobs:
           poetry run python tests/test_comprehensive.py
 
       - name: Run checkpoint integration tests
+        id: checkpoint-tests
+        continue-on-error: true
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
@@ -341,29 +380,14 @@ jobs:
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
           set -euo pipefail
-          report_path="${RUNNER_TEMP}/checkpoint-integration-${{ matrix.db-type }}.xml"
+          report_path="${RUNNER_TEMP}/checkpoint-integration-${{ matrix.artifact-suffix }}.xml"
           echo "Running checkpoint integration tests with ${{ matrix.db-type }}..."
-          poetry run pytest ${{ matrix.checkpoint-target }} -v --junitxml="$report_path"
-          python - "$report_path" <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
-
-          report_path = sys.argv[1]
-          root = ET.parse(report_path).getroot()
-          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-          failures = sum(int(suite.attrib.get("failures", 0)) for suite in suites)
-          errors = sum(int(suite.attrib.get("errors", 0)) for suite in suites)
-          skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in suites)
-          tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
-          print(
-              f"JUnit summary: tests={tests} failures={failures} errors={errors} skipped={skipped}"
-          )
-          if failures or errors:
-              raise SystemExit(1)
-          PY
+          poetry run pytest ${{ matrix.checkpoint-target }} -v --tb=short --junitxml="$report_path"
 
       - name: Run vectorstore integration tests
+        id: vectorstore-tests
         if: matrix.vectorstore-target != ''
+        continue-on-error: true
         env:
           OB_HOST: 127.0.0.1
           OB_PORT: ${{ matrix.port }}
@@ -373,26 +397,99 @@ jobs:
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
         run: |
           set -euo pipefail
-          report_path="${RUNNER_TEMP}/vectorstore-integration-${{ matrix.db-type }}.xml"
+          report_path="${RUNNER_TEMP}/vectorstore-integration-${{ matrix.artifact-suffix }}.xml"
           echo "Running vectorstore integration tests with ${{ matrix.db-type }}..."
-          poetry run pytest ${{ matrix.vectorstore-target }} -v --junitxml="$report_path"
-          python - "$report_path" <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
+          poetry run pytest ${{ matrix.vectorstore-target }} -v --tb=short --junitxml="$report_path"
 
-          report_path = sys.argv[1]
-          root = ET.parse(report_path).getroot()
-          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-          failures = sum(int(suite.attrib.get("failures", 0)) for suite in suites)
-          errors = sum(int(suite.attrib.get("errors", 0)) for suite in suites)
-          skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in suites)
-          tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
-          print(
-              f"JUnit summary: tests={tests} failures={failures} errors={errors} skipped={skipped}"
-          )
-          if failures or errors:
-              raise SystemExit(1)
-          PY
+      - name: Run chat message history integration tests
+        id: chat-history-tests
+        if: matrix.chat-history-target != ''
+        continue-on-error: true
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: ${{ matrix.port }}
+          OB_USER: ${{ matrix.user }}
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
+          OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
+        run: |
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/chat-history-integration-${{ matrix.artifact-suffix }}.xml"
+          echo "Running chat message history integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.chat-history-target }} -v --tb=short --junitxml="$report_path"
+
+      - name: Run hybrid search integration tests
+        id: hybrid-tests
+        if: matrix.hybrid-target != ''
+        continue-on-error: true
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: ${{ matrix.port }}
+          OB_USER: ${{ matrix.user }}
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
+          OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
+        run: |
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/hybrid-search-integration-${{ matrix.artifact-suffix }}.xml"
+          echo "Running hybrid search integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.hybrid-target }} -v --tb=short --junitxml="$report_path"
+
+      - name: Run AI functions integration tests
+        id: ai-functions-tests
+        if: matrix.ai-functions-target != ''
+        continue-on-error: true
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: ${{ matrix.port }}
+          OB_USER: ${{ matrix.user }}
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
+          OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
+        run: |
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/ai-functions-integration-${{ matrix.artifact-suffix }}.xml"
+          echo "Running AI functions integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.ai-functions-target }} -v --tb=short --junitxml="$report_path"
+
+      - name: Publish Test Report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Test Results - ${{ matrix.name }}
+          path: ${{ runner.temp }}/*.xml
+          reporter: java-junit
+          fail-on-error: false
+          only-summary: false
+
+      - name: Upload all test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.artifact-suffix }}
+          path: ${{ runner.temp }}/*.xml
+          if-no-files-found: ignore
+
+      - name: Fail job if any suite failed
+        if: always()
+        run: |
+          set -euo pipefail
+          failed=0
+          for outcome in \
+            "${{ steps.unit-tests.outcome }}" \
+            "${{ steps.comprehensive-tests.outcome }}" \
+            "${{ steps.checkpoint-tests.outcome }}" \
+            "${{ steps.vectorstore-tests.outcome }}" \
+            "${{ steps.chat-history-tests.outcome }}" \
+            "${{ steps.hybrid-tests.outcome }}" \
+            "${{ steps.ai-functions-tests.outcome }}"; do
+            if [ "$outcome" = "failure" ] || [ "$outcome" = "cancelled" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Cleanup
         if: always()
@@ -434,12 +531,28 @@ jobs:
 
       - name: Test embedding functionality
         run: |
-          poetry run python -c "
-          from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
-          adapter = DefaultEmbeddingFunctionAdapter()
-          embeddings = adapter.embed_documents(['test document'])
-          print(f'Embedding test passed: {len(embeddings[0])} dimensions')
-          "
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/embedding-vectorization.xml"
+          poetry run pytest tests/integration_tests/test_embedding_vectorization.py \
+            -v --tb=short --junitxml="$report_path"
+
+      - name: Publish Test Report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Test Results - Embedding
+          path: ${{ runner.temp }}/*.xml
+          reporter: java-junit
+          fail-on-error: false
+          only-summary: false
+
+      - name: Upload all test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-embedding
+          path: ${{ runner.temp }}/*.xml
+          if-no-files-found: ignore
 
   test-summary:
     name: Test Summary
@@ -448,9 +561,41 @@ jobs:
     if: always()
 
     steps:
-      - name: Test Summary
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: ${{ runner.temp }}/all-results
+          merge-multiple: true
+
+      - name: Combine JUnit XML files
         run: |
-          echo "All jobs finished."
-          echo "Lint:            ${{ needs.lint.result }}"
-          echo "DB test matrix:  ${{ needs.test.result }}"
-          echo "Embedding tests: ${{ needs.test-embedding.result }}"
+          python3 .github/scripts/combine_junit.py \
+            "${{ runner.temp }}/all-results" \
+            "${{ runner.temp }}/combined-results/combined.xml"
+
+      - name: Publish Combined Test Report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Test Results - Combined
+          path: ${{ runner.temp }}/combined-results/combined.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Write summary
+        run: |
+          python3 .github/scripts/summarize_junit.py "${{ runner.temp }}/all-results"
+          {
+            echo ""
+            echo "## Job Results"
+            echo ""
+            echo "| Job | Status |"
+            echo "|-----|--------|"
+            echo "| Lint | ${{ needs.lint.result }} |"
+            echo "| DB Tests | ${{ needs.test.result }} |"
+            echo "| Embedding | ${{ needs.test-embedding.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
