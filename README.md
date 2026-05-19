@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-This package contains the LangChain integration with OceanBase. **Current version: 0.4.0**
+This package contains the LangChain integration with OceanBase. **Current version: 0.5.0**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -16,7 +16,7 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
-## What's New in 0.4.0
+## What's New in 0.5.0
 
 - **LangGraph checkpointing is now a primary workflow**: `OceanBaseCheckpointSaver` is the recommended way to persist graph state, resume threads, and support time-travel in LangGraph applications.
 - **Storage support is explicit by backend**: OceanBase, SeekDB, embedded SeekDB, and MySQL now have clearer capability boundaries in CI and documentation.
@@ -33,7 +33,7 @@ Support for `ChatMessageHistory` is provided as an additional integration and is
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
-## 0.4.0 Support Matrix
+## 0.5.0 Support Matrix
 
 | Backend | LangGraph checkpoint | LangGraph store | Vector store | Chat message history | Hybrid search | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -85,7 +85,7 @@ pip install -U langchain-oceanbase
 - pyobvector >=0.2.0 (required for database client)
 - pyseekdb >=0.1.0 (required dependency; use **>=1.2** on supported platforms for **embedded SeekDB** and the `pylibseekdb` runtime)
 
-> **Tip**: The current version (0.4.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
+> **Tip**: The current version (0.5.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
