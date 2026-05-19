@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import uuid
 
+import pytest
+
 
 def embedded_seekdb_runtime_available() -> bool:
     try:
@@ -69,3 +71,13 @@ def is_embedded_seekdb_capacity_error(exc: Exception) -> bool:
     return "execute sql failed 5703 Add index failed" in message or (
         "execute sql failed 4184 Server out of disk space" in message
     )
+
+
+def skip_embedded_seekdb_capacity_error(
+    exc: Exception,
+    *,
+    backend: str,
+    operation: str,
+) -> None:
+    if backend == "embedded-seekdb" and is_embedded_seekdb_capacity_error(exc):
+        pytest.skip(f"embedded SeekDB capacity exceeded while {operation}: {exc}")
