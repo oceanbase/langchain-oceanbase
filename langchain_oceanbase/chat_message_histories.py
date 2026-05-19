@@ -10,10 +10,15 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import BaseMessage
 from pyobvector import ObVecClient
 from sqlalchemy import JSON, Column, String
+from sqlalchemy.exc import ResourceClosedError
 
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 DEFAULT_OCEANBASE_CHAT_MESSAGE_TABLE_NAME = "langchain_chat_message"
+
+
+def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
+    return "does not return rows" in str(error)
 
 
 class OceanBaseChatMessageHistory(BaseChatMessageHistory):
@@ -205,7 +210,12 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
         )
 
         messages: List[BaseMessage] = []
-        rows = res.fetchall()
+        try:
+            rows = res.fetchall()
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
 
         # Sort by created_at timestamp to maintain order
         rows.sort(key=lambda x: int(x[3]) if x[3] else 0)

@@ -8,7 +8,10 @@ import pytest
 from langchain_core.embeddings import Embeddings
 
 from langchain_oceanbase import OceanBaseStore
-from tests.integration_tests._backend_utils import unique_table_name
+from tests.integration_tests._backend_utils import (
+    is_embedded_seekdb_capacity_error,
+    unique_table_name,
+)
 
 
 class DummyEmbeddings(Embeddings):
@@ -35,6 +38,7 @@ class DummyEmbeddings(Embeddings):
 
 @pytest.fixture
 def store_factory(
+    integration_backend_name: str,
     integration_connection_args: dict[str, str],
     integration_client_kwargs: dict[str, Any],
 ):
@@ -49,7 +53,17 @@ def store_factory(
             **integration_client_kwargs,
             **kwargs,
         )
-        store.setup()
+        try:
+            store.setup()
+        except Exception as exc:
+            if (
+                integration_backend_name == "embedded-seekdb"
+                and is_embedded_seekdb_capacity_error(exc)
+            ):
+                pytest.skip(
+                    f"embedded SeekDB capacity exceeded while creating store indexes: {exc}"
+                )
+            raise
         stores.append(store)
         return store
 

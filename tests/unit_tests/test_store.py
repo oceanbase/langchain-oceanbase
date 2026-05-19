@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from langchain_core.embeddings import Embeddings
 from sqlalchemy import MetaData, create_engine
+from sqlalchemy.exc import ResourceClosedError
 from sqlalchemy.pool import StaticPool
 
 from langchain_oceanbase.store import OceanBaseStore
@@ -128,6 +129,25 @@ def test_list_namespaces_supports_prefix_suffix_and_depth(store: OceanBaseStore)
 
     assert by_prefix == [("users", "1"), ("users", "2")]
     assert by_suffix == [("users", "1", "prefs"), ("users", "2", "prefs")]
+
+
+def test_store_treats_empty_closed_results_as_missing_rows(store: OceanBaseStore) -> None:
+    mock_result = SimpleNamespace(
+        fetchone=lambda: (_ for _ in ()).throw(
+            ResourceClosedError(
+                "This result object does not return rows. It has been closed automatically."
+            )
+        ),
+        fetchall=lambda: (_ for _ in ()).throw(
+            ResourceClosedError(
+                "This result object does not return rows. It has been closed automatically."
+            )
+        ),
+    )
+    mock_conn = SimpleNamespace(execute=lambda stmt: mock_result)
+
+    assert store._fetch_row_by_item_id(mock_conn, "missing") is None
+    assert store._fetch_candidate_rows(mock_conn, None) == []
 
 
 def test_ttl_expires_items_and_refreshes_on_read(store: OceanBaseStore) -> None:

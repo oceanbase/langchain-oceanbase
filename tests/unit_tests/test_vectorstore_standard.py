@@ -182,3 +182,26 @@ class TestOceanbaseVectorStoreUnit:
 
         with pytest.raises(ResourceClosedError, match="unexpected close"):
             vectorstore.similarity_search("query", k=1)
+
+    def test_hybrid_result_combiner_ignores_results_without_ids(self, vectorstore):
+        combined = vectorstore._combine_multi_modal_results(
+            [
+                ("vector", [{"document": "", "metadata": {}}]),
+                (
+                    "fulltext",
+                    [
+                        {
+                            "id": "doc-1",
+                            "document": "useful content",
+                            "metadata": {"topic": "AI"},
+                        }
+                    ],
+                ),
+            ],
+            k=2,
+        )
+
+        docs = vectorstore._convert_list_results_to_documents(combined)
+
+        assert [doc.id for doc in docs] == ["doc-1"]
+        assert docs[0].metadata == {"topic": "AI"}

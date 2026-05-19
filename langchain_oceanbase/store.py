@@ -47,11 +47,16 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.engine import Connection, Row
+from sqlalchemy.exc import ResourceClosedError
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
 _TOKENIZED_FIELDS_KEY = "__tokenized_fields"
+
+
+def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
+    return "does not return rows" in str(error)
 
 
 class OceanBaseStore(BaseStore):
@@ -409,7 +414,12 @@ class OceanBaseStore(BaseStore):
             .where(self._live_condition())
             .limit(1)
         )
-        return conn.execute(stmt).fetchone()
+        try:
+            return conn.execute(stmt).fetchone()
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return None
+            raise
 
     def _fetch_candidate_rows(
         self, conn: Connection, namespace_prefix: tuple[str, ...] | None
@@ -425,7 +435,12 @@ class OceanBaseStore(BaseStore):
             self._items_table.c.created_at,
             self._items_table.c.item_id,
         )
-        return list(conn.execute(stmt).fetchall())
+        try:
+            return list(conn.execute(stmt).fetchall())
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
 
     def _row_to_item(self, row: Row[Any]) -> Item:
         mapping = row._mapping

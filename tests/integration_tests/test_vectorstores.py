@@ -11,7 +11,11 @@ from langchain_tests.integration_tests import (
 
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
-from tests.integration_tests._backend_utils import unique_table_name, use_embedded_seekdb
+from tests.integration_tests._backend_utils import (
+    is_embedded_seekdb_capacity_error,
+    unique_table_name,
+    use_embedded_seekdb,
+)
 
 EMBEDDING_SIZE = 6
 
@@ -34,17 +38,28 @@ def vectorstore_factory(
         index_type: str | None = None,
         **kwargs,
     ) -> OceanbaseVectorStore:
-        store = OceanbaseVectorStore(
-            embedding_function=embedding_function or DefaultEmbeddingFunctionAdapter(),
-            table_name=table_name or unique_table_name("integration_test"),
-            connection_args=integration_connection_args,
-            vidx_metric_type=vidx_metric_type,
-            index_type=index_type or default_vector_index_type,
-            drop_old=True,
-            embedding_dim=embedding_dim,
-            **integration_client_kwargs,
-            **kwargs,
-        )
+        try:
+            store = OceanbaseVectorStore(
+                embedding_function=embedding_function
+                or DefaultEmbeddingFunctionAdapter(),
+                table_name=table_name or unique_table_name("integration_test"),
+                connection_args=integration_connection_args,
+                vidx_metric_type=vidx_metric_type,
+                index_type=index_type or default_vector_index_type,
+                drop_old=True,
+                embedding_dim=embedding_dim,
+                **integration_client_kwargs,
+                **kwargs,
+            )
+        except Exception as exc:
+            if (
+                seekdb_capable_backend == "embedded-seekdb"
+                and is_embedded_seekdb_capacity_error(exc)
+            ):
+                pytest.skip(
+                    f"embedded SeekDB capacity exceeded while creating vector index: {exc}"
+                )
+            raise
         stores.append(store)
         return store
 
