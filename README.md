@@ -19,6 +19,7 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 ## What's New in 0.5.0
 
 - **LangGraph checkpointing is now a primary workflow**: `OceanBaseCheckpointSaver` is the recommended way to persist graph state, resume threads, and support time-travel in LangGraph applications.
+- **LangGraph store support is now built in**: `OceanBaseStore` provides namespace-scoped memory, JSON filtering, semantic search, async APIs, and TTL-backed expiry for long-term memory workflows.
 - **Storage support is explicit by backend**: OceanBase, SeekDB, embedded SeekDB, and MySQL now have clearer capability boundaries in CI and documentation.
 - **SeekDB coverage is broader**: server-backed SeekDB and embedded SeekDB are both covered for the supported vector and history scenarios.
 
@@ -26,21 +27,23 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 
 [![LangChain](https://img.shields.io/badge/LangChain-Integration-blue)](https://python.langchain.com/docs/integrations/vectorstores/oceanbase/)
 
-`OceanbaseVectorStore` is the official LangChain integration for OceanBase.
+`OceanbaseVectorStore` is the official LangChain vector store integration for OceanBase.
 
-Support for `ChatMessageHistory` is provided as an additional integration and is not part of the official VectorStore API.
+For LangGraph applications, the recommended persistence surfaces are:
+- `OceanBaseCheckpointSaver` for graph state, replay, and time-travel workflows
+- `OceanBaseStore` for long-term memory, retrieval, and TTL-backed storage
 
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
 ## 0.5.0 Support Matrix
 
-| Backend | LangGraph checkpoint | LangGraph store | Vector store | Chat message history | Hybrid search | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| OceanBase | Yes | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
-| SeekDB (server) | Yes | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including provider-backed AI function coverage in CI when AI test secrets are configured. |
-| Embedded SeekDB | Yes | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
-| MySQL | Yes | Yes | No | No | No | Checkpoint and LangGraph store workflows are supported without the vector store surface. |
+| Backend | LangGraph checkpoint | LangGraph store | Vector store | Hybrid search | Notes |
+| --- | --- | --- | --- | --- | --- |
+| OceanBase | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
+| SeekDB (server) | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including provider-backed AI function coverage in CI when AI test secrets are configured. |
+| Embedded SeekDB | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
+| MySQL | Yes | Yes | No | No | Checkpoint and LangGraph store workflows are supported without the vector store surface. |
 
 ### Recommended by Use Case
 
