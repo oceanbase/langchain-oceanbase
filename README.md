@@ -35,16 +35,17 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
 ## 0.4.0 Support Matrix
 
-| Backend | LangGraph checkpoint | Vector store | Chat message history | Hybrid search | Notes |
-| --- | --- | --- | --- | --- | --- |
-| OceanBase | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
-| SeekDB (server) | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including the current AI function test coverage in CI. |
-| Embedded SeekDB | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
-| MySQL | Yes | No | No | No | Checkpoint-focused backend only; vector and search features are out of scope. |
+| Backend | LangGraph checkpoint | LangGraph store | Vector store | Chat message history | Hybrid search | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| OceanBase | Yes | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
+| SeekDB (server) | Yes | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including provider-backed AI function coverage in CI when AI test secrets are configured. |
+| Embedded SeekDB | Yes | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
+| MySQL | Yes | Yes | No | No | No | Checkpoint and LangGraph store workflows are supported without the vector store surface. |
 
 ### Recommended by Use Case
 
 - **LangGraph state persistence**: use OceanBase, SeekDB, embedded SeekDB, or MySQL depending on your operational requirements.
+- **LangGraph long-term memory / store API**: use `OceanBaseStore` when you need namespace-scoped key/value memory with filtering, semantic search, and TTL.
 - **Vector store and retrieval workflows**: use OceanBase, SeekDB server, or embedded SeekDB.
 - **Hybrid retrieval with dense + sparse + full-text search**: use OceanBase, SeekDB server, or embedded SeekDB.
 - **Simple checkpoint-only deployments**: MySQL remains supported for checkpoint storage, but not vector features.
@@ -52,6 +53,7 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 ## Features
 
 * **LangGraph Checkpointing**: Persist LangGraph conversation checkpoints with `OceanBaseCheckpointSaver`, including resume, replay, and time-travel workflows for multi-thread graph state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **LangGraph Store**: Persist long-term memory with `OceanBaseStore`, including namespace-scoped key/value items, JSON filters, semantic search, async methods, and TTL-based expiry.
 * **Vector Storage**: Store embeddings from LangChain models in OceanBase, SeekDB, or embedded SeekDB with automatic table creation and index management.
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
   * **No API Keys Required**: Uses local ONNX models, no external API calls needed
@@ -130,6 +132,7 @@ Choose your preferred format:
 - **[AI Functions Guide](./docs/ai_functions.md)** - Documentation for AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)
 - **[AI Functions Guide (Notebook)](./docs/ai_functions.ipynb)** - Interactive notebook for AI Functions
 - **[Migration Guide](./docs/migration_guide.md)** - Migrating to LangGraph Checkpointer and schema changes
+- **[LangGraph Store example](./examples/langgraph_store.py)** - Runnable example for namespace-scoped memory, semantic search, and TTL
 
 #### Built-in Embedding Sections:
 - [**Installation**](./docs/embeddings.md#installation) - Install required packages
@@ -155,6 +158,46 @@ Choose your preferred format:
 - [**Model Configuration API**](./docs/ai_functions.md#model-configuration-api) - Setup AI models and endpoints
 
 ### Quick Start
+
+#### Using LangGraph Store Memory
+
+```python
+from langchain_core.embeddings import Embeddings
+from langchain_oceanbase import OceanBaseStore
+
+
+class DemoEmbeddings(Embeddings):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        lowered = text.lower()
+        return [
+            1.0 if "python" in lowered else 0.0,
+            1.0 if "database" in lowered else 0.0,
+            float((len(lowered) % 13) + 1),
+        ]
+
+
+store = OceanBaseStore(
+    connection_args={
+        "host": "127.0.0.1",
+        "port": "2881",
+        "user": "root@test",
+        "password": "",
+        "db_name": "test",
+    },
+    index={"dims": 3, "embed": DemoEmbeddings(), "fields": ["memory"]},
+    ttl_config={"refresh_on_read": True, "default_ttl": 60},
+)
+store.setup()
+
+namespace = ("memories", "user-123")
+store.put(namespace, "favorite-language", {"memory": "The user prefers Python."})
+results = store.search(namespace, query="python", limit=3)
+```
+
+See [examples/langgraph_store.py](./examples/langgraph_store.py) for a complete runnable example.
 
 #### Using Built-in Embedding (No API Keys Required)
 

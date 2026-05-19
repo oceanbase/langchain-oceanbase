@@ -62,3 +62,10 @@ def embedded_connection_args() -> dict[str, str]:
 
 def unique_table_name(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def is_embedded_seekdb_capacity_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "execute sql failed 5703 Add index failed" in message or (
+        "execute sql failed 4184 Server out of disk space" in message
+    )
