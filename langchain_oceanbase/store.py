@@ -30,8 +30,22 @@ from langgraph.store.base import (
     tokenize_path,
 )
 from pyobvector import ObVecClient  # type: ignore[import-untyped]
-from sqlalchemy import JSON, DateTime, Float, Index, MetaData, String, Table, Text
-from sqlalchemy import Column, and_, delete, or_, select, update
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    MetaData,
+    String,
+    Table,
+    Text,
+    and_,
+    delete,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.engine import Connection, Row
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
@@ -185,7 +199,9 @@ class OceanBaseStore(BaseStore):
     def _search_items(self, conn: Connection, op: SearchOp) -> list[SearchItem]:
         rows = self._fetch_candidate_rows(conn, op.namespace_prefix)
         filtered = [
-            row for row in rows if self._matches_filter(row._mapping["value_json"], op.filter)
+            row
+            for row in rows
+            if self._matches_filter(row._mapping["value_json"], op.filter)
         ]
 
         if op.query and self.index_config is not None and self.embeddings is not None:
@@ -210,12 +226,12 @@ class OceanBaseStore(BaseStore):
             self._refresh_ttl(conn, touched)
         return results
 
-    async def _asearch_items(
-        self, conn: Connection, op: SearchOp
-    ) -> list[SearchItem]:
+    async def _asearch_items(self, conn: Connection, op: SearchOp) -> list[SearchItem]:
         rows = self._fetch_candidate_rows(conn, op.namespace_prefix)
         filtered = [
-            row for row in rows if self._matches_filter(row._mapping["value_json"], op.filter)
+            row
+            for row in rows
+            if self._matches_filter(row._mapping["value_json"], op.filter)
         ]
 
         if op.query and self.index_config is not None and self.embeddings is not None:
@@ -285,11 +301,12 @@ class OceanBaseStore(BaseStore):
             touched.append(row)
         return results, touched
 
-    def _list_namespaces(self, conn: Connection, op: ListNamespacesOp) -> list[tuple[str, ...]]:
+    def _list_namespaces(
+        self, conn: Connection, op: ListNamespacesOp
+    ) -> list[tuple[str, ...]]:
         rows = self._fetch_candidate_rows(conn, None)
         namespaces = {
-            tuple(cast(list[str], row._mapping["namespace_json"]))
-            for row in rows
+            tuple(cast(list[str], row._mapping["namespace_json"])) for row in rows
         }
         ordered = sorted(
             ns
@@ -447,11 +464,7 @@ class OceanBaseStore(BaseStore):
         value: dict[str, Any],
         index: Literal[False] | list[str] | None,
     ) -> list[dict[str, Any]] | None:
-        if (
-            index is False
-            or self.index_config is None
-            or self.embeddings is None
-        ):
+        if index is False or self.index_config is None or self.embeddings is None:
             return None
 
         extracted = self._extract_texts(value, index)
@@ -474,11 +487,7 @@ class OceanBaseStore(BaseStore):
         value: dict[str, Any],
         index: Literal[False] | list[str] | None,
     ) -> list[dict[str, Any]] | None:
-        if (
-            index is False
-            or self.index_config is None
-            or self.embeddings is None
-        ):
+        if index is False or self.index_config is None or self.embeddings is None:
             return None
 
         extracted = self._extract_texts(value, index)
@@ -503,7 +512,10 @@ class OceanBaseStore(BaseStore):
             return []
 
         if index is None:
-            paths = cast(list[tuple[str, str | list[str]]], self.index_config[_TOKENIZED_FIELDS_KEY])
+            paths = cast(
+                list[tuple[str, str | list[str]]],
+                self.index_config[_TOKENIZED_FIELDS_KEY],
+            )
         else:
             paths = [
                 (path, tokenize_path(path)) if path != "$" else (path, path)
@@ -518,7 +530,9 @@ class OceanBaseStore(BaseStore):
             if len(texts) == 1:
                 extracted.append((path, texts[0]))
             else:
-                extracted.extend((f"{path}.{idx}", text) for idx, text in enumerate(texts))
+                extracted.extend(
+                    (f"{path}.{idx}", text) for idx, text in enumerate(texts)
+                )
         return extracted
 
     def _matches_filter(
@@ -556,11 +570,7 @@ class OceanBaseStore(BaseStore):
         return "".join(f"{len(part)}:{part}|" for part in namespace)
 
     def _escape_like_pattern(self, value: str) -> str:
-        return (
-            value.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     def _validate_namespace(self, namespace: tuple[str, ...]) -> None:
         if not namespace:
@@ -643,7 +653,9 @@ class OceanBaseStore(BaseStore):
             return float(value) <= float(operand)
         raise ValueError(f"Unsupported operator: {operator}")
 
-    def _normalize_vector(self, vector: list[float] | tuple[float, ...] | Any) -> list[float]:
+    def _normalize_vector(
+        self, vector: list[float] | tuple[float, ...] | Any
+    ) -> list[float]:
         return [float(value) for value in vector]
 
     def _cosine_similarity(
