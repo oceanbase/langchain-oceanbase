@@ -118,20 +118,26 @@ def test_store_namespace_prefix_metacharacters_are_literal(store_factory) -> Non
 
 def test_store_semantic_search_and_ttl(store_factory) -> None:
     store = store_factory()
-    started = time.monotonic()
 
     store.put(("memories",), "python", {"text": "python memory"})
     store.put(("memories",), "java", {"text": "java memory"})
-    store.put(("memories",), "ttl", {"text": "ttl marker"}, ttl=0.03)
+    store.put(("memories",), "ttl", {"text": "ttl marker"}, ttl=0.05)
+    store.put(("memories",), "ttl-control", {"text": "ttl control"}, ttl=0.05)
 
     ranked = store.search(("memories",), query="python", limit=2)
     assert [result.key for result in ranked] == ["python", "java"]
 
-    time.sleep(0.5)
+    time.sleep(1.0)
     assert store.get(("memories",), "ttl", refresh_ttl=True) is not None
 
-    while time.monotonic() - started < 2.2:
-        time.sleep(0.1)
+    control_expiration_deadline = time.monotonic() + 4.5
+    while time.monotonic() < control_expiration_deadline:
+        if store.get(("memories",), "ttl-control", refresh_ttl=False) is None:
+            break
+        time.sleep(0.2)
+    else:
+        pytest.fail("Control TTL item did not expire in time")
+
     assert store.get(("memories",), "ttl", refresh_ttl=False) is not None
 
     expiration_deadline = time.monotonic() + 3.5
