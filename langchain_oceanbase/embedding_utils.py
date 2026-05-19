@@ -28,21 +28,43 @@ Usage Examples:
     >>> query_embedding = embeddings.embed_query("Hello")
 """
 
-from __future__ import annotations
-
 import logging
+import platform
 from typing import List, Optional
 
 from langchain_core.embeddings import Embeddings
 
-try:
-    from pyseekdb import DefaultEmbeddingFunction
-except ImportError:
-    DefaultEmbeddingFunction = None  # type: ignore
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["DefaultEmbeddingFunction", "DefaultEmbeddingFunctionAdapter"]
+
+DEFAULT_EMBEDDING_INSTALL_COMMAND = 'pip install -U "langchain-oceanbase[pyseekdb]"'
+
+
+try:
+    from pyseekdb import DefaultEmbeddingFunction
+except ImportError as exc:
+    DefaultEmbeddingFunction = None  # type: ignore[assignment]
+    _PYSEEKDB_IMPORT_ERROR = exc
+else:
+    _PYSEEKDB_IMPORT_ERROR = None
+
+
+def _raise_for_missing_pyseekdb() -> None:
+    message = (
+        "pyseekdb is not installed. "
+        "Install the optional embedding dependencies with: "
+        f"{DEFAULT_EMBEDDING_INSTALL_COMMAND}"
+    )
+    system = platform.system()
+    if system != "Linux":
+        message += (
+            f"\n\nNote: pyseekdb currently has the best support on Linux. "
+            f"Your system is {system}. "
+            "Consider using Linux (via Docker, WSL2, or a Linux VM) "
+            "or connecting to a remote OceanBase/SeekDB instance."
+        )
+    raise ImportError(message) from _PYSEEKDB_IMPORT_ERROR
 
 
 class DefaultEmbeddingFunctionAdapter(Embeddings):
@@ -60,7 +82,7 @@ class DefaultEmbeddingFunctionAdapter(Embeddings):
         self,
         model_name: str = "all-MiniLM-L6-v2",
         preferred_providers: Optional[List[str]] = None,
-    ):
+    ) -> None:
         """
         Initialize the adapter.
 
@@ -70,22 +92,7 @@ class DefaultEmbeddingFunctionAdapter(Embeddings):
         """
         super().__init__()
         if DefaultEmbeddingFunction is None:
-            import platform
-
-            system = platform.system()
-            error_msg = (
-                "pyseekdb is not installed or cannot be imported. "
-                "Please install it with: pip install pyseekdb"
-            )
-            if system != "Linux":
-                error_msg += (
-                    f"\n\nNote: pyseekdb currently only supports Linux platforms. "
-                    f"Your system is {system}. "
-                    "Consider using Linux (via Docker, WSL2, or a Linux VM) "
-                    "or connecting to a remote OceanBase/SeekDB instance."
-                )
-            raise ImportError(error_msg)
-
+            _raise_for_missing_pyseekdb()
         self._pyseekdb_embedding_function = DefaultEmbeddingFunction(
             model_name=model_name,
             preferred_providers=preferred_providers,

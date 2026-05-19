@@ -36,20 +36,9 @@ jobs:
         virtualenvs-create: true
         virtualenvs-in-project: true
 
-    - name: Install pyseekdb and dependencies first
-      run: |
-        pip install pyseekdb
-
     - name: Install dependencies
       run: |
-        set +e
-        poetry install --no-interaction --no-cache 2>&1 | tee /tmp/poetry_install.log || true
-        if grep -q "onnxruntime.*abi tags" /tmp/poetry_install.log; then
-          echo "Detected onnxruntime ABI issue, installing dependencies manually..."
-          poetry install --no-interaction --no-cache --no-deps || true
-          poetry run pip install -r <(poetry export --without-hashes --format=requirements.txt 2>/dev/null | grep -v "^onnxruntime" | grep -v "^pyseekdb" || echo "") || true
-        fi
-        set -e
+        poetry install --no-interaction --no-cache --no-root
 
     - name: Build package
       run: |

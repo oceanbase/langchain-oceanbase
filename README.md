@@ -86,7 +86,7 @@ pip install -U langchain-oceanbase
 - Python >=3.11
 - langchain-core >=1.0.0
 - pyobvector >=0.2.0 (required for database client)
-- pyseekdb >=0.1.0 (required dependency; use **>=1.2** on supported platforms for **embedded SeekDB** and the `pylibseekdb` runtime)
+- `pyseekdb` extra (optional; install `langchain-oceanbase[pyseekdb]` for built-in embeddings and embedded SeekDB support)
 
 > **Tip**: The current version (0.5.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
@@ -97,7 +97,13 @@ pip install -U langchain-oceanbase
 
 ### Built-in Embedding Dependencies
 
-For built-in embedding functionality (no API keys required), `pyseekdb` is automatically installed as an optional dependency. It provides:
+For built-in embedding functionality (no API keys required), install the optional `pyseekdb` extra:
+
+```bash
+pip install -U "langchain-oceanbase[pyseekdb]"
+```
+
+It provides:
 - Local ONNX-based embedding inference
 - Default embedding model: `all-MiniLM-L6-v2` (384 dimensions)
 - No external API calls needed
