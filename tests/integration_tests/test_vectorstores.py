@@ -12,7 +12,7 @@ from langchain_tests.integration_tests import (
 from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 from tests.integration_tests._backend_utils import (
-    is_embedded_seekdb_capacity_error,
+    skip_embedded_seekdb_capacity_error,
     unique_table_name,
     use_embedded_seekdb,
 )
@@ -52,13 +52,11 @@ def vectorstore_factory(
                 **kwargs,
             )
         except Exception as exc:
-            if (
-                seekdb_capable_backend == "embedded-seekdb"
-                and is_embedded_seekdb_capacity_error(exc)
-            ):
-                pytest.skip(
-                    f"embedded SeekDB capacity exceeded while creating vector index: {exc}"
-                )
+            skip_embedded_seekdb_capacity_error(
+                exc,
+                backend=seekdb_capable_backend,
+                operation="creating vector index",
+            )
             raise
         stores.append(store)
         return store
@@ -180,6 +178,7 @@ class TestOceanbaseVectorStoreIntegration:
     def test_from_texts_integration(
         self,
         vectorstore,
+        seekdb_capable_backend: str,
         integration_client_kwargs: dict[str, str],
         default_vector_index_type: str,
     ):
@@ -187,18 +186,26 @@ class TestOceanbaseVectorStoreIntegration:
         texts = ["Integration test 1", "Integration test 2", "Integration test 3"]
         metadatas = [{"source": "int1"}, {"source": "int2"}, {"source": "int3"}]
 
-        new_vectorstore = OceanbaseVectorStore.from_texts(
-            texts=texts,
-            embedding=vectorstore.embedding_function,
-            metadatas=metadatas,
-            table_name=unique_table_name("from_texts_integration"),
-            connection_args=vectorstore.connection_args,
-            vidx_metric_type="l2",
-            index_type=default_vector_index_type,
-            drop_old=True,
-            embedding_dim=384,
-            **integration_client_kwargs,
-        )
+        try:
+            new_vectorstore = OceanbaseVectorStore.from_texts(
+                texts=texts,
+                embedding=vectorstore.embedding_function,
+                metadatas=metadatas,
+                table_name=unique_table_name("from_texts_integration"),
+                connection_args=vectorstore.connection_args,
+                vidx_metric_type="l2",
+                index_type=default_vector_index_type,
+                drop_old=True,
+                embedding_dim=384,
+                **integration_client_kwargs,
+            )
+        except Exception as exc:
+            skip_embedded_seekdb_capacity_error(
+                exc,
+                backend=seekdb_capable_backend,
+                operation="creating vector index via from_texts",
+            )
+            raise
 
         # Verify all texts are present by searching with empty string
         all_results = new_vectorstore.similarity_search("", k=10)
