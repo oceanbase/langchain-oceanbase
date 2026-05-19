@@ -72,6 +72,7 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: ""
@@ -86,6 +87,7 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: ""
@@ -100,6 +102,7 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: tests/integration_tests/test_ai_functions.py
@@ -114,6 +117,7 @@ jobs:
             upgrade-latest-stack: false
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: ""
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: ""
             hybrid-target: ""
             ai-functions-target: ""
@@ -128,6 +132,7 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_embedded_seekdb.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_embedded_seekdb.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: ""
@@ -142,6 +147,7 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: ""
@@ -156,6 +162,7 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
             hybrid-target: tests/integration_tests/test_hybrid_search.py
             ai-functions-target: ""
@@ -170,6 +177,7 @@ jobs:
             upgrade-latest-stack: true
             checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpointer_mysql.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: ""
+            store-target: tests/integration_tests/test_store.py
             chat-history-target: ""
             hybrid-target: ""
             ai-functions-target: ""
@@ -349,6 +357,7 @@ jobs:
             tests/unit_tests/test_checkpointer_async_api.py \
             tests/unit_tests/test_checkpointer_mysql_compat.py \
             tests/unit_tests/test_legacy_checkpoint_saver.py \
+            tests/unit_tests/test_store.py \
             tests/unit_tests/test_vectorstore_standard.py \
             -v --tb=short --junitxml="$report_path"
 
@@ -401,6 +410,23 @@ jobs:
           echo "Running vectorstore integration tests with ${{ matrix.db-type }}..."
           poetry run pytest ${{ matrix.vectorstore-target }} -v --tb=short --junitxml="$report_path"
 
+      - name: Run store integration tests
+        id: store-tests
+        if: matrix.store-target != ''
+        continue-on-error: true
+        env:
+          OB_HOST: 127.0.0.1
+          OB_PORT: ${{ matrix.port }}
+          OB_USER: ${{ matrix.user }}
+          OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
+          OB_DB: test
+          OB_CI_DB_TYPE: ${{ matrix.db-type }}
+        run: |
+          set -euo pipefail
+          report_path="${RUNNER_TEMP}/store-integration-${{ matrix.artifact-suffix }}.xml"
+          echo "Running store integration tests with ${{ matrix.db-type }}..."
+          poetry run pytest ${{ matrix.store-target }} -v --tb=short --junitxml="$report_path"
+
       - name: Run chat message history integration tests
         id: chat-history-tests
         if: matrix.chat-history-target != ''
@@ -446,6 +472,11 @@ jobs:
           OB_PASSWORD: ${{ matrix.db-type == 'mysql' && 'rootpass' || '' }}
           OB_DB: test
           OB_CI_DB_TYPE: ${{ matrix.db-type }}
+          OB_AI_TEST_URL: ${{ secrets.OB_AI_TEST_URL }}
+          OB_AI_TEST_ACCESS_KEY: ${{ secrets.OB_AI_TEST_ACCESS_KEY }}
+          OB_AI_TEST_EMBED_MODEL: ${{ secrets.OB_AI_TEST_EMBED_MODEL }}
+          OB_AI_TEST_COMPLETE_MODEL: ${{ secrets.OB_AI_TEST_COMPLETE_MODEL }}
+          OB_AI_TEST_PROVIDER: ${{ secrets.OB_AI_TEST_PROVIDER }}
         run: |
           set -euo pipefail
           report_path="${RUNNER_TEMP}/ai-functions-integration-${{ matrix.artifact-suffix }}.xml"
@@ -480,6 +511,7 @@ jobs:
             "${{ steps.comprehensive-tests.outcome }}" \
             "${{ steps.checkpoint-tests.outcome }}" \
             "${{ steps.vectorstore-tests.outcome }}" \
+            "${{ steps.store-tests.outcome }}" \
             "${{ steps.chat-history-tests.outcome }}" \
             "${{ steps.hybrid-tests.outcome }}" \
             "${{ steps.ai-functions-tests.outcome }}"; do

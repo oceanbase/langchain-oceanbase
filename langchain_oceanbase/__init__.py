@@ -25,6 +25,11 @@ try:
 except ImportError:
     OceanBaseCheckpointSaver = None  # type: ignore
 
+try:
+    from langchain_oceanbase.store import OceanBaseStore
+except ImportError:
+    OceanBaseStore = None  # type: ignore
+
 # Custom exceptions - always available
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
@@ -47,6 +52,7 @@ __all__ = [
     "OceanBaseChatMessageHistory",
     "OceanBaseAIFunctions",
     "OceanBaseCheckpointSaver",
+    "OceanBaseStore",
     "DefaultEmbeddingFunction",
     # Exceptions
     "OceanBaseError",
