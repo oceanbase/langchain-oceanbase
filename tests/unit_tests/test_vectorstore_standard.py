@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from unittest.mock import MagicMock, patch
 
@@ -182,3 +183,21 @@ class TestOceanbaseVectorStoreUnit:
 
         with pytest.raises(ResourceClosedError, match="unexpected close"):
             vectorstore.similarity_search("query", k=1)
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("pyseekdb") is not None,
+        reason="pyseekdb is installed",
+    )
+    def test_default_embedding_requires_optional_dependency(self):
+        """Default embeddings should fail with an actionable optional-dependency message."""
+        with pytest.raises(ImportError, match="langchain-oceanbase\\[pyseekdb\\]"):
+            OceanbaseVectorStore(
+                connection_args={
+                    "host": "localhost",
+                    "port": "2881",
+                    "user": "root",
+                    "password": "",
+                    "db_name": "test",
+                },
+                table_name="test_table",
+            )

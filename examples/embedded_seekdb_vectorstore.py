@@ -7,7 +7,7 @@ Standalone example: ``langchain-oceanbase`` with latest ``pyobvector`` and **emb
 
 Install (virtualenv recommended)::
 
-    pip install -U langchain-oceanbase "pyobvector[pyseekdb]"
+    pip install -U "langchain-oceanbase[pyseekdb]"
 
 Embedded mode needs a recent ``pyseekdb`` that installs the ``pylibseekdb`` wheel. If imports fail::
 
@@ -32,7 +32,7 @@ def _require_embedded_runtime() -> None:
     except ImportError:
         print(
             "pylibseekdb (embedded SeekDB runtime) not found. Install with:\n"
-            '  pip install -U langchain-oceanbase "pyobvector[pyseekdb]"\n'
+            '  pip install -U "langchain-oceanbase[pyseekdb]"\n'
             "or:\n"
             '  pip install -U "pyseekdb>=1.2"',
             file=sys.stderr,

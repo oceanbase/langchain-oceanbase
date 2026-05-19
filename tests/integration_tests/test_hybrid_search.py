@@ -1,13 +1,13 @@
-from __future__ import annotations
-
 """Tests for OceanBase Vector Store hybrid search capabilities."""
+
+from __future__ import annotations
 
 import time
 
 import pytest
 from langchain_core.documents import Document
+from langchain_core.embeddings import FakeEmbeddings
 
-from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
 from langchain_oceanbase.exceptions import (
     OceanBaseConfigurationError,
     OceanBaseVectorDimensionError,
@@ -22,7 +22,7 @@ class TestHybridSearch:
     @pytest.fixture
     def embeddings(self):
         """Standard embeddings for testing."""
-        return DefaultEmbeddingFunctionAdapter()
+        return FakeEmbeddings(size=384)
 
     @pytest.fixture
     def hybrid_store_factory(

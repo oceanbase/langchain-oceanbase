@@ -35,6 +35,23 @@ else:
     DefaultEmbeddingFunctionAdapter = None
 
 
+def test_embedding_module_imports_without_pyseekdb() -> None:
+    """The module should stay importable even when the optional extra is absent."""
+    assert embedding_utils_module is not None
+    if PYSEEKDB_AVAILABLE:
+        assert embedding_utils_module.DefaultEmbeddingFunction is not None
+    else:
+        assert embedding_utils_module.DefaultEmbeddingFunction is None
+
+
+@pytest.mark.skipif(PYSEEKDB_AVAILABLE, reason="pyseekdb is installed")
+def test_adapter_raises_clear_error_without_pyseekdb() -> None:
+    """Missing optional dependencies should fail with an actionable message."""
+    assert embedding_utils_module is not None
+    with pytest.raises(ImportError, match="langchain-oceanbase\\[pyseekdb\\]"):
+        embedding_utils_module.DefaultEmbeddingFunctionAdapter()
+
+
 @pytest.mark.skipif(
     PySeekDBDefaultEmbeddingFunction is None or DefaultEmbeddingFunction is None,
     reason="pyseekdb is not installed",
@@ -250,12 +267,13 @@ class TestDefaultEmbeddingFunctionAdapterErrorHandling:
         reason="pyseekdb is not installed or module cannot be imported, cannot test error handling",
     )
     def test_adapter_import_error_when_default_is_none(self):
-        """Test ImportError when DefaultEmbeddingFunction is None."""
+        """Test ImportError when pyseekdb is unavailable."""
         import unittest.mock
 
-        # Use mock instead of reload because reload will re-import from pyseekdb
         with unittest.mock.patch.object(
-            embedding_utils_module, "DefaultEmbeddingFunction", None
+            embedding_utils_module,
+            "DefaultEmbeddingFunction",
+            None,
         ):
             with pytest.raises(ImportError, match="pyseekdb is not installed"):
                 embedding_utils_module.DefaultEmbeddingFunctionAdapter()
