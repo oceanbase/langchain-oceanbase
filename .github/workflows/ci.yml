@@ -64,6 +64,7 @@ jobs:
           - name: embedded-seekdb
             artifact-suffix: embedded-seekdb-base
             db-type: embedded-seekdb
+            poetry-extra-args: -E pyseekdb
             port: ""
             user: ""
             image: ""
@@ -79,6 +80,7 @@ jobs:
           - name: oceanbase
             artifact-suffix: oceanbase-base
             db-type: oceanbase
+            poetry-extra-args: ""
             port: 2881
             user: root@test
             image: oceanbase/oceanbase-ce:4.3.5-lts
@@ -94,6 +96,7 @@ jobs:
           - name: seekdb
             artifact-suffix: seekdb-base
             db-type: seekdb
+            poetry-extra-args: ""
             port: 2882
             user: root
             image: oceanbase/seekdb
@@ -109,6 +112,7 @@ jobs:
           - name: mysql
             artifact-suffix: mysql-base
             db-type: mysql
+            poetry-extra-args: ""
             port: 3306
             user: root
             image: mysql:8.4
@@ -124,6 +128,7 @@ jobs:
           - name: embedded-seekdb, latest-checkpoint-stack
             artifact-suffix: embedded-seekdb-latest
             db-type: embedded-seekdb
+            poetry-extra-args: -E pyseekdb
             port: ""
             user: ""
             image: ""
@@ -139,6 +144,7 @@ jobs:
           - name: oceanbase, latest-checkpoint-stack
             artifact-suffix: oceanbase-latest
             db-type: oceanbase
+            poetry-extra-args: ""
             port: 2881
             user: root@test
             image: oceanbase/oceanbase-ce:4.3.5-lts
@@ -154,6 +160,7 @@ jobs:
           - name: seekdb, latest-checkpoint-stack
             artifact-suffix: seekdb-latest
             db-type: seekdb
+            poetry-extra-args: ""
             port: 2882
             user: root
             image: oceanbase/seekdb
@@ -169,6 +176,7 @@ jobs:
           - name: mysql, latest-checkpoint-stack
             artifact-suffix: mysql-latest
             db-type: mysql
+            poetry-extra-args: ""
             port: 3306
             user: root
             image: mysql:8.4
@@ -206,7 +214,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --with test,test_integration --no-interaction
+          poetry install --with test,test_integration --no-interaction ${{ matrix.poetry-extra-args }}
 
       - name: Upgrade to latest supported LangChain and LangGraph stack
         if: matrix.upgrade-latest-stack
@@ -602,7 +610,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --with test --no-interaction --no-root
+          poetry install --with test --no-interaction --no-root -E pyseekdb
 
       - name: Test embedding functionality
         run: |

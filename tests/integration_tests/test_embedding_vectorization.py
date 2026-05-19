@@ -5,9 +5,8 @@ including DefaultEmbeddingFunction and DefaultEmbeddingFunctionAdapter.
 These tests verify that embeddings can be generated correctly without requiring
 database connections.
 
-Note: pyseekdb is a required dependency (defined in pyproject.toml), so these
-tests should always run in CI environments. If pyseekdb is not available,
-the tests will fail, which helps identify dependency issues early.
+Note: pyseekdb is an optional dependency. These tests run only when the
+pyseekdb extra is installed.
 """
 
 import pytest
