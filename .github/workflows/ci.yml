@@ -503,25 +503,68 @@ jobs:
 
       - name: Fail job if any suite failed
         if: always()
+        env:
+          ARTIFACT_SUFFIX: ${{ matrix.artifact-suffix }}
+          VECTORSTORE_TARGET: ${{ matrix.vectorstore-target }}
+          STORE_TARGET: ${{ matrix.store-target }}
+          CHAT_HISTORY_TARGET: ${{ matrix.chat-history-target }}
+          HYBRID_TARGET: ${{ matrix.hybrid-target }}
+          AI_FUNCTIONS_TARGET: ${{ matrix.ai-functions-target }}
+          COMPREHENSIVE_OUTCOME: ${{ steps.comprehensive-tests.outcome }}
         run: |
           set -euo pipefail
-          failed=0
-          for outcome in \
-            "${{ steps.unit-tests.outcome }}" \
-            "${{ steps.comprehensive-tests.outcome }}" \
-            "${{ steps.checkpoint-tests.outcome }}" \
-            "${{ steps.vectorstore-tests.outcome }}" \
-            "${{ steps.store-tests.outcome }}" \
-            "${{ steps.chat-history-tests.outcome }}" \
-            "${{ steps.hybrid-tests.outcome }}" \
-            "${{ steps.ai-functions-tests.outcome }}"; do
-            if [ "$outcome" = "failure" ] || [ "$outcome" = "cancelled" ]; then
-              failed=1
-            fi
-          done
-          if [ "$failed" -ne 0 ]; then
-            exit 1
-          fi
+          python3 - <<'PY'
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          artifact_suffix = os.environ["ARTIFACT_SUFFIX"]
+          report_root = Path(os.environ["RUNNER_TEMP"])
+          expected_reports = [
+              report_root / f"unit-tests-{artifact_suffix}.xml",
+              report_root / f"checkpoint-integration-{artifact_suffix}.xml",
+          ]
+
+          optional_reports = [
+              ("VECTORSTORE_TARGET", f"vectorstore-integration-{artifact_suffix}.xml"),
+              ("STORE_TARGET", f"store-integration-{artifact_suffix}.xml"),
+              ("CHAT_HISTORY_TARGET", f"chat-history-integration-{artifact_suffix}.xml"),
+              ("HYBRID_TARGET", f"hybrid-search-integration-{artifact_suffix}.xml"),
+              ("AI_FUNCTIONS_TARGET", f"ai-functions-integration-{artifact_suffix}.xml"),
+          ]
+          for env_name, filename in optional_reports:
+              if os.environ[env_name]:
+                  expected_reports.append(report_root / filename)
+
+          missing = [str(path) for path in expected_reports if not path.exists()]
+          if missing:
+              print("Missing expected JUnit reports:")
+              for path in missing:
+                  print(f" - {path}")
+              sys.exit(1)
+
+          failures = 0
+          errors = 0
+          for path in expected_reports:
+              root = ET.parse(path).getroot()
+              suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+              failures += sum(int(suite.attrib.get("failures", 0)) for suite in suites)
+              errors += sum(int(suite.attrib.get("errors", 0)) for suite in suites)
+
+          if failures or errors:
+              print(
+                  f"JUnit suites reported failures={failures} errors={errors}"
+              )
+              sys.exit(1)
+
+          if os.environ["COMPREHENSIVE_OUTCOME"] in {"failure", "cancelled"}:
+              print(
+                  "Comprehensive test step failed with outcome="
+                  f"{os.environ['COMPREHENSIVE_OUTCOME']}"
+              )
+              sys.exit(1)
+          PY
 
       - name: Cleanup
         if: always()
