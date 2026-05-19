@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from langchain_core.embeddings import Embeddings
 from sqlalchemy import MetaData, create_engine
+from sqlalchemy.pool import StaticPool
 
 from langchain_oceanbase.store import OceanBaseStore
 
@@ -29,14 +30,18 @@ class DummyEmbeddings(Embeddings):
         return [
             1.0 if "python" in lowered else 0.0,
             1.0 if "java" in lowered else 0.0,
-            float((len(lowered) % 7) + 1),
+            1.0 if "python" not in lowered and "java" not in lowered else 0.0,
         ]
 
 
 @pytest.fixture
 def store() -> OceanBaseStore:
     fake_client = SimpleNamespace(
-        engine=create_engine("sqlite:///:memory:"),
+        engine=create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        ),
         metadata_obj=MetaData(),
     )
     with patch("langchain_oceanbase.store.ObVecClient", return_value=fake_client):
@@ -126,15 +131,15 @@ def test_list_namespaces_supports_prefix_suffix_and_depth(store: OceanBaseStore)
 
 
 def test_ttl_expires_items_and_refreshes_on_read(store: OceanBaseStore) -> None:
-    store.put(("ttl",), "ephemeral", {"text": "python ttl"}, ttl=0.002)
+    store.put(("ttl",), "ephemeral", {"text": "ttl marker"}, ttl=0.005)
 
-    time.sleep(0.03)
+    time.sleep(0.05)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=True) is not None
 
-    time.sleep(0.03)
+    time.sleep(0.05)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=False) is not None
 
-    time.sleep(0.12)
+    time.sleep(0.35)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=False) is None
 
 

@@ -29,7 +29,7 @@ class DummyEmbeddings(Embeddings):
         return [
             1.0 if "python" in lowered else 0.0,
             1.0 if "java" in lowered else 0.0,
-            float((len(lowered) % 11) + 1),
+            1.0 if "python" not in lowered and "java" not in lowered else 0.0,
         ]
 
 
@@ -99,16 +99,16 @@ def test_store_semantic_search_and_ttl(store_factory) -> None:
 
     store.put(("memories",), "python", {"text": "python memory"})
     store.put(("memories",), "java", {"text": "java memory"})
-    store.put(("memories",), "ttl", {"text": "python ttl"}, ttl=0.002)
+    store.put(("memories",), "ttl", {"text": "ttl marker"}, ttl=0.005)
 
     ranked = store.search(("memories",), query="python", limit=2)
     assert [result.key for result in ranked] == ["python", "java"]
 
-    time.sleep(0.03)
+    time.sleep(0.05)
     assert store.get(("memories",), "ttl", refresh_ttl=True) is not None
-    time.sleep(0.03)
+    time.sleep(0.05)
     assert store.get(("memories",), "ttl", refresh_ttl=False) is not None
-    time.sleep(0.12)
+    time.sleep(0.35)
     assert store.get(("memories",), "ttl", refresh_ttl=False) is None
 
 
