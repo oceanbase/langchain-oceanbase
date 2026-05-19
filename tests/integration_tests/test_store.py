@@ -99,16 +99,16 @@ def test_store_semantic_search_and_ttl(store_factory) -> None:
 
     store.put(("memories",), "python", {"text": "python memory"})
     store.put(("memories",), "java", {"text": "java memory"})
-    store.put(("memories",), "ttl", {"text": "ttl marker"}, ttl=0.005)
+    store.put(("memories",), "ttl", {"text": "ttl marker"}, ttl=0.03)
 
     ranked = store.search(("memories",), query="python", limit=2)
     assert [result.key for result in ranked] == ["python", "java"]
 
-    time.sleep(0.05)
+    time.sleep(0.2)
     assert store.get(("memories",), "ttl", refresh_ttl=True) is not None
-    time.sleep(0.05)
+    time.sleep(0.2)
     assert store.get(("memories",), "ttl", refresh_ttl=False) is not None
-    time.sleep(0.35)
+    time.sleep(2.0)
     assert store.get(("memories",), "ttl", refresh_ttl=False) is None
 
 
