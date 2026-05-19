@@ -35,6 +35,20 @@ class DummyEmbeddings(Embeddings):
         ]
 
 
+class AsyncOnlyEmbeddings(Embeddings):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("sync embed_documents called")
+
+    def embed_query(self, text: str) -> list[float]:
+        raise RuntimeError("sync embed_query called")
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[1.0] for _ in texts]
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return [1.0]
+
+
 @pytest.fixture
 def store() -> OceanBaseStore:
     fake_client = SimpleNamespace(
@@ -76,6 +90,7 @@ def test_search_honors_filters_and_comparison_operators(store: OceanBaseStore) -
     store.put(("docs", "team-a"), "one", {"text": "python guide", "age": 12})
     store.put(("docs", "team-a"), "two", {"text": "java guide", "age": 8})
     store.put(("docs", "team-b"), "three", {"text": "python tips", "age": 20})
+    store.put(("docs", "team-c"), "four", {"text": "python misc"})
 
     results = store.search(
         ("docs",),
@@ -118,6 +133,19 @@ def test_semantic_search_ranks_indexed_items_and_fills_with_scoreless_items(
     assert mixed[2].score is None
 
 
+def test_semantic_search_offset_advances_into_scoreless_items(
+    store: OceanBaseStore,
+) -> None:
+    store.put(("memories",), "python", {"text": "python patterns"})
+    store.put(("memories",), "java", {"text": "java patterns"})
+    store.put(("memories",), "scoreless-a", {"text": "other a"}, index=False)
+    store.put(("memories",), "scoreless-b", {"text": "other b"}, index=False)
+
+    page = store.search(("memories",), query="python", limit=1, offset=3)
+
+    assert [result.key for result in page] == ["scoreless-b"]
+
+
 def test_list_namespaces_supports_prefix_suffix_and_depth(store: OceanBaseStore) -> None:
     store.put(("users", "1", "prefs"), "a", {"text": "python"})
     store.put(("users", "1", "docs"), "b", {"text": "java"})
@@ -151,15 +179,15 @@ def test_store_treats_empty_closed_results_as_missing_rows(store: OceanBaseStore
 
 
 def test_ttl_expires_items_and_refreshes_on_read(store: OceanBaseStore) -> None:
-    store.put(("ttl",), "ephemeral", {"text": "ttl marker"}, ttl=0.005)
+    store.put(("ttl",), "ephemeral", {"text": "ttl marker"}, ttl=0.01)
 
-    time.sleep(0.05)
+    time.sleep(0.25)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=True) is not None
 
-    time.sleep(0.05)
+    time.sleep(0.45)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=False) is not None
 
-    time.sleep(0.35)
+    time.sleep(0.25)
     assert store.get(("ttl",), "ephemeral", refresh_ttl=False) is None
 
 
@@ -176,20 +204,29 @@ async def test_async_store_methods_round_trip(store: OceanBaseStore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_abatch_offloads_sync_batch_work(store: OceanBaseStore) -> None:
-    calls: list[tuple[object, tuple[object, ...]]] = []
+async def test_async_store_methods_use_async_embeddings() -> None:
+    fake_client = SimpleNamespace(
+        engine=create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        ),
+        metadata_obj=MetaData(),
+    )
+    with patch("langchain_oceanbase.store.ObVecClient", return_value=fake_client):
+        store = OceanBaseStore(
+            connection_args={
+                "host": "localhost",
+                "port": "2881",
+                "user": "root",
+                "password": "",
+                "db_name": "test",
+            },
+            index={"dims": 1, "embed": AsyncOnlyEmbeddings(), "fields": ["text"]},
+        )
+        store.setup()
 
-    async def fake_to_thread(func: object, /, *args: object, **kwargs: object) -> object:
-        calls.append((func, args))
-        assert kwargs == {}
-        return "sentinel"
+        await store.aput(("async",), "doc", {"text": "python async"})
+        results = await store.asearch(("async",), query="python", limit=1)
 
-    with patch("langchain_oceanbase.store.asyncio.to_thread", side_effect=fake_to_thread):
-        result = await store.abatch([])
-
-    assert result == "sentinel"
-    assert len(calls) == 1
-    func, args = calls[0]
-    assert getattr(func, "__self__", None) is store
-    assert getattr(func, "__func__", None) is OceanBaseStore.batch
-    assert args == ([],)
+    assert [result.key for result in results] == ["doc"]

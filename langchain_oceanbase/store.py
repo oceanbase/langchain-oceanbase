@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import math
 import threading
@@ -124,8 +123,14 @@ class OceanBaseStore(BaseStore):
             return [self._execute_op(conn, op) for op in operations]
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
+        self.setup()
         operations = list(ops)
-        return await asyncio.to_thread(self.batch, operations)
+        with self.obvector.engine.begin() as conn:
+            self._delete_expired_items(conn)
+            results: list[Result] = []
+            for op in operations:
+                results.append(await self._aexecute_op(conn, op))
+            return results
 
     def _create_client(self, **kwargs: Any) -> None:
         host = self.connection_args.get("host", "localhost")
@@ -287,7 +292,13 @@ class OceanBaseStore(BaseStore):
         scored.sort(key=lambda item: item[0], reverse=True)
         kept = scored[op.offset : op.offset + op.limit]
         if len(kept) < op.limit:
-            kept.extend((None, row) for row in scoreless[: op.limit - len(kept)])
+            scoreless_offset = max(0, op.offset - len(scored))
+            kept.extend(
+                (None, row)
+                for row in scoreless[
+                    scoreless_offset : scoreless_offset + (op.limit - len(kept))
+                ]
+            )
 
         results: list[SearchItem] = []
         touched: list[Row[Any]] = []
@@ -658,14 +669,21 @@ class OceanBaseStore(BaseStore):
             return value == operand
         if operator == "$ne":
             return value != operand
+        if value is None:
+            return False
+        try:
+            numeric_value = float(value)
+            numeric_operand = float(operand)
+        except (TypeError, ValueError):
+            return False
         if operator == "$gt":
-            return float(value) > float(operand)
+            return numeric_value > numeric_operand
         if operator == "$gte":
-            return float(value) >= float(operand)
+            return numeric_value >= numeric_operand
         if operator == "$lt":
-            return float(value) < float(operand)
+            return numeric_value < numeric_operand
         if operator == "$lte":
-            return float(value) <= float(operand)
+            return numeric_value <= numeric_operand
         raise ValueError(f"Unsupported operator: {operator}")
 
     def _normalize_vector(

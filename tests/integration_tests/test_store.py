@@ -93,6 +93,14 @@ def test_store_round_trip_and_namespace_listing(store_factory) -> None:
     assert [result.key for result in filtered] == ["theme"]
 
 
+def test_store_empty_backend_results_behave_like_empty_store(store_factory) -> None:
+    store = store_factory()
+
+    assert store.get(("missing",), "item") is None
+    assert store.search(("missing",), limit=10) == []
+    assert store.list_namespaces(prefix=("missing",), max_depth=2) == []
+
+
 def test_store_namespace_prefix_metacharacters_are_literal(store_factory) -> None:
     store = store_factory()
 
@@ -110,6 +118,7 @@ def test_store_namespace_prefix_metacharacters_are_literal(store_factory) -> Non
 
 def test_store_semantic_search_and_ttl(store_factory) -> None:
     store = store_factory()
+    started = time.monotonic()
 
     store.put(("memories",), "python", {"text": "python memory"})
     store.put(("memories",), "java", {"text": "java memory"})
@@ -118,12 +127,20 @@ def test_store_semantic_search_and_ttl(store_factory) -> None:
     ranked = store.search(("memories",), query="python", limit=2)
     assert [result.key for result in ranked] == ["python", "java"]
 
-    time.sleep(0.2)
+    time.sleep(0.5)
     assert store.get(("memories",), "ttl", refresh_ttl=True) is not None
-    time.sleep(0.2)
+
+    while time.monotonic() - started < 2.2:
+        time.sleep(0.1)
     assert store.get(("memories",), "ttl", refresh_ttl=False) is not None
-    time.sleep(2.0)
-    assert store.get(("memories",), "ttl", refresh_ttl=False) is None
+
+    expiration_deadline = time.monotonic() + 3.5
+    while time.monotonic() < expiration_deadline:
+        if store.get(("memories",), "ttl", refresh_ttl=False) is None:
+            break
+        time.sleep(0.2)
+    else:
+        pytest.fail("TTL item did not expire after the refreshed TTL window")
 
 
 @pytest.mark.asyncio
