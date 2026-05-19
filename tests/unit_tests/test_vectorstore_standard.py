@@ -205,3 +205,35 @@ class TestOceanbaseVectorStoreUnit:
 
         assert [doc.id for doc in docs] == ["doc-1"]
         assert docs[0].metadata == {"topic": "AI"}
+
+    def test_hybrid_result_combiner_reads_dotted_row_keys(self, vectorstore):
+        combined = vectorstore._combine_multi_modal_results(
+            [
+                (
+                    "vector",
+                    [
+                        {
+                            "test_table.id": "doc-1",
+                            "test_table.document": "useful content",
+                            "test_table.metadata": '{"topic": "AI"}',
+                        }
+                    ],
+                ),
+                (
+                    "sparse",
+                    [
+                        {
+                            "test_table.id": "doc-2",
+                            "test_table.document": "backup content",
+                            "test_table.metadata": '{"topic": "ML"}',
+                        }
+                    ],
+                ),
+            ],
+            k=2,
+        )
+
+        docs = vectorstore._convert_list_results_to_documents(combined)
+
+        assert [doc.id for doc in docs] == ["doc-1", "doc-2"]
+        assert [doc.metadata for doc in docs] == [{"topic": "AI"}, {"topic": "ML"}]

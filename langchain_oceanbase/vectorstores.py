@@ -84,9 +84,26 @@ def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
     return "does not return rows" in str(error)
 
 
+def _result_field_from_hybrid_result(
+    result: Any, field_name: str, default: Any = None
+) -> Any:
+    if not isinstance(result, dict):
+        return default
+
+    if field_name in result:
+        return result[field_name]
+
+    qualified_suffix = f".{field_name}"
+    for key, value in result.items():
+        if isinstance(key, str) and key.endswith(qualified_suffix):
+            return value
+
+    return default
+
+
 def _result_id_from_hybrid_result(result: Any, primary_field: str) -> Any | None:
     if isinstance(result, dict):
-        return result.get(primary_field)
+        return _result_field_from_hybrid_result(result, primary_field)
     return result[2] if len(result) > 2 else result[0]
 
 
@@ -1040,9 +1057,13 @@ class OceanbaseVectorStore(VectorStore):
 
             if isinstance(result, dict):
                 # Dictionary format: extract fields by name
-                doc_id = result.get(self.primary_field)
-                page_content = result.get(self.text_field, "")
-                metadata = result.get(self.metadata_field, {})
+                doc_id = _result_field_from_hybrid_result(result, self.primary_field)
+                page_content = _result_field_from_hybrid_result(
+                    result, self.text_field, ""
+                )
+                metadata = _result_field_from_hybrid_result(
+                    result, self.metadata_field, {}
+                )
 
                 # Ensure metadata is a dict, not a JSON string
                 if isinstance(metadata, str):
