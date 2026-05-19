@@ -183,6 +183,30 @@ class TestOceanbaseVectorStoreUnit:
         with pytest.raises(ResourceClosedError, match="unexpected close"):
             vectorstore.similarity_search("query", k=1)
 
+    def test_advanced_hybrid_search_returns_empty_when_backend_returns_no_rows(
+        self, vectorstore, mock_client
+    ):
+        """Vector-only hybrid search should map empty backend results to []."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        class EmptyClosedResult:
+            def fetchall(self):
+                raise ResourceClosedError(
+                    "This result object does not return rows. It has been closed automatically."
+                )
+
+            def __iter__(self):
+                raise ResourceClosedError(
+                    "This result object does not return rows. It has been closed automatically."
+                )
+
+        mock_result = EmptyClosedResult()
+        mock_client.ann_search.return_value = mock_result
+
+        docs = vectorstore.advanced_hybrid_search(vector_query="query", k=1)
+
+        assert docs == []
+
     def test_hybrid_result_combiner_ignores_results_without_ids(self, vectorstore):
         combined = vectorstore._combine_multi_modal_results(
             [

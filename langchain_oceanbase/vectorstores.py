@@ -84,6 +84,28 @@ def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
     return "does not return rows" in str(error)
 
 
+def _materialize_result_rows(results: Any) -> List[Any]:
+    """Convert backend search results to a concrete list of rows."""
+    if results is None:
+        return []
+
+    fetchall = getattr(results, "fetchall", None)
+    if callable(fetchall):
+        try:
+            return list(fetchall())
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
+
+    try:
+        return list(results)
+    except ResourceClosedError as exc:
+        if _is_empty_result_resource_closed_error(exc):
+            return []
+        raise
+
+
 def _result_field_from_hybrid_result(
     result: Any, field_name: str, default: Any = None
 ) -> Any:
@@ -559,14 +581,7 @@ class OceanbaseVectorStore(VectorStore):
         Returns:
             List[Document] or List[Tuple[Document, float]]: Converted documents
         """
-        try:
-            rows = results.fetchall()
-        except ResourceClosedError as exc:
-            # Embedded SeekDB can surface empty ANN / GET results as a closed
-            # SQLAlchemy result instead of an iterable row set.
-            if _is_empty_result_resource_closed_error(exc):
-                return []
-            raise
+        rows = _materialize_result_rows(results)
 
         if include_score:
             return [
@@ -757,12 +772,7 @@ class OceanbaseVectorStore(VectorStore):
             ],
         )
         documents_by_id: dict[str, Document] = {}
-        try:
-            rows = res.fetchall()
-        except ResourceClosedError as exc:
-            if _is_empty_result_resource_closed_error(exc):
-                return []
-            raise
+        rows = _materialize_result_rows(res)
 
         for row in rows:
             document_id = str(row[2])
@@ -1591,16 +1601,14 @@ class OceanbaseVectorStore(VectorStore):
         for modality_type, results in all_results:
             weight = modality_weights.get(modality_type, 0.1)
 
-            # Convert CursorResult to list if needed
             results_list = []
-            if results:
-                for row in results:
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for row in _materialize_result_rows(results):
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
 
             # Store converted results for later use
             all_converted_results[modality_type] = results_list
@@ -1865,16 +1873,15 @@ class OceanbaseVectorStore(VectorStore):
             single_results = all_results[0][1]
             # Convert CursorResult to list and take first k results
             results_list = []
-            if single_results:
-                for i, row in enumerate(single_results):
-                    if i >= k:
-                        break
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for i, row in enumerate(_materialize_result_rows(single_results)):
+                if i >= k:
+                    break
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
             return self._convert_list_results_to_documents(results_list)
         else:
             # Multiple modalities, combine and rank
@@ -1949,16 +1956,15 @@ class OceanbaseVectorStore(VectorStore):
             # Single modality, convert CursorResult to list
             single_results = all_results[0][1]
             results_list = []
-            if single_results:
-                for i, row in enumerate(single_results):
-                    if i >= k:
-                        break
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for i, row in enumerate(_materialize_result_rows(single_results)):
+                if i >= k:
+                    break
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
             return self._convert_list_results_to_documents(results_list)
         else:
             combined_results = self._combine_multi_modal_results(all_results, k)
