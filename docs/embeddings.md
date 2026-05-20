@@ -7,10 +7,10 @@ This guide demonstrates how to use the built-in embedding functionality provided
 
 ## Installation
 
-The built-in embedding functionality requires the `pyseekdb` package, which uses ONNX runtime for local inference:
+The built-in embedding functionality requires the optional `pyseekdb` extra, which uses ONNX runtime for local inference:
 
 ```bash
-pip install -qU "langchain-oceanbase" "pyseekdb"
+pip install -qU "langchain-oceanbase[pyseekdb]"
 ```
 
 ## Method 1: Direct Use of DefaultEmbeddingFunction

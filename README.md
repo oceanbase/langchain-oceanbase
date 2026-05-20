@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-This package contains the LangChain integration with OceanBase. **Current version: 0.4.0**
+This package contains the LangChain integration with OceanBase. **Current version: 0.5.0**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -16,51 +16,61 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
-## What's New in 0.4.0
+## What's New in 0.5.0
 
-- **LangGraph checkpointing is now a primary workflow**: `OceanBaseCheckpointSaver` is the recommended way to persist graph state, resume threads, and support time-travel in LangGraph applications.
-- **Storage support is explicit by backend**: OceanBase, SeekDB, embedded SeekDB, and MySQL now have clearer capability boundaries in CI and documentation.
-- **SeekDB coverage is broader**: server-backed SeekDB and embedded SeekDB are both covered for the supported vector and history scenarios.
+- **The full LangChain persistence pack is now in one release**: `OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, and `OceanBaseStore` are all supported in `0.5.0`.
+- **OceanBase and seekdb are full-surface backends**: both cover vectorstore, checkpoint, and store workflows, with hybrid retrieval support on the vector side.
+- **MySQL remains the compatibility option for on-prem deployments**: if your environment already standardizes on MySQL, you can use it for checkpoint and store workloads without taking on vector infrastructure.
+- **Built-in embeddings and embedded seekdb are now explicitly optional**: install `langchain-oceanbase[pyseekdb]` when you want the bundled embedding runtime or local embedded seekdb.
 
 ## LangChain Integration
 
 [![LangChain](https://img.shields.io/badge/LangChain-Integration-blue)](https://python.langchain.com/docs/integrations/vectorstores/oceanbase/)
 
-`OceanbaseVectorStore` is the official LangChain integration for OceanBase.
+`OceanbaseVectorStore` is the official LangChain vector store integration for OceanBase.
 
-Support for `ChatMessageHistory` is provided as an additional integration and is not part of the official VectorStore API.
+For LangGraph applications, the recommended persistence surfaces are:
+- `OceanBaseCheckpointSaver` for graph state, replay, and time-travel workflows
+- `OceanBaseStore` for long-term memory, retrieval, and TTL-backed storage
+
+In `0.5.0`, the package story is straightforward:
+- OceanBase: full pack support for vectorstore + checkpoint + store
+- seekdb: full pack support for vectorstore + checkpoint + store
+- MySQL: compatible checkpoint + store backend for existing on-prem MySQL estates
 
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
-## 0.4.0 Support Matrix
+## 0.5.0 Support Matrix
 
-| Backend | LangGraph checkpoint | Vector store | Chat message history | Hybrid search | Notes |
+| Backend | LangGraph checkpoint | LangGraph store | Vector store | Hybrid search | Notes |
 | --- | --- | --- | --- | --- | --- |
 | OceanBase | Yes | Yes | Yes | Yes | Best fit when you want the full SQL + vector database workflow. |
-| SeekDB (server) | Yes | Yes | Yes | Yes | Full-featured SeekDB deployment, including the current AI function test coverage in CI. |
-| Embedded SeekDB | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
-| MySQL | Yes | No | No | No | Checkpoint-focused backend only; vector and search features are out of scope. |
+| seekdb (server) | Yes | Yes | Yes | Yes | Full-pack seekdb deployment, including provider-backed AI function coverage in CI when AI test secrets are configured. |
+| embedded seekdb | Yes | Yes | Yes | Yes | Local path-based runtime through `pyseekdb` / `pylibseekdb`; no server deployment required. |
+| MySQL | Yes | Yes | No | No | Use your existing on-prem MySQL deployment for checkpoint and store compatibility when you do not need vector or hybrid retrieval. |
 
 ### Recommended by Use Case
 
-- **LangGraph state persistence**: use OceanBase, SeekDB, embedded SeekDB, or MySQL depending on your operational requirements.
-- **Vector store and retrieval workflows**: use OceanBase, SeekDB server, or embedded SeekDB.
-- **Hybrid retrieval with dense + sparse + full-text search**: use OceanBase, SeekDB server, or embedded SeekDB.
-- **Simple checkpoint-only deployments**: MySQL remains supported for checkpoint storage, but not vector features.
+- **LangGraph state persistence**: use OceanBase, seekdb, embedded seekdb, or MySQL depending on your operational requirements.
+- **LangGraph long-term memory / store API**: use `OceanBaseStore` when you need namespace-scoped key/value memory with filtering, semantic search, and TTL.
+- **Vector store and retrieval workflows**: use OceanBase, seekdb server, or embedded seekdb.
+- **Hybrid retrieval with dense + sparse + full-text search**: use OceanBase, seekdb server, or embedded seekdb.
+- **Existing on-prem MySQL estates**: MySQL remains supported for checkpoint and store workflows, but not vector features.
 
 ## Features
 
-* **LangGraph Checkpointing**: Persist LangGraph conversation checkpoints with `OceanBaseCheckpointSaver`, including resume, replay, and time-travel workflows for multi-thread graph state. See [Migration Guide](./docs/migration_guide.md) and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
-* **Vector Storage**: Store embeddings from LangChain models in OceanBase, SeekDB, or embedded SeekDB with automatic table creation and index management.
+* **LangGraph Checkpointing**: Persist LangGraph conversation checkpoints with `OceanBaseCheckpointSaver`, including resume, replay, and time-travel workflows for multi-thread graph state. See [Migration Guide](./docs/migration_guide.md), [checkpoint notebook](./docs/langgraph_checkpoint.ipynb), and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
+* **LangGraph Store**: Persist long-term memory with `OceanBaseStore`, including namespace-scoped key/value items, JSON filters, semantic search, async methods, and TTL-based expiry. See the [store notebook](./docs/langgraph_store.ipynb) and [examples/langgraph_store.py](./examples/langgraph_store.py).
+* **Vector Storage**: Store embeddings from LangChain models in OceanBase, seekdb, or embedded seekdb with automatic table creation and index management.
 * **Built-in Embedding**: Built-in embedding function using `all-MiniLM-L6-v2` model (384 dimensions) with no API keys required. Perfect for quick prototyping and local development.
   * **No API Keys Required**: Uses local ONNX models, no external API calls needed
   * **Quick Start**: Perfect for rapid prototyping and testing
   * **LangChain Compatible**: Fully compatible with LangChain's `Embeddings` interface
   * **Batch Processing**: Supports efficient batch embedding generation
-  * **Automatic Integration**: Can be automatically used in `OceanbaseVectorStore` by setting `embedding_function=None`
+  * **Automatic Integration**: Can be automatically used in `OceanbaseVectorStore` by setting `embedding_function=None` after installing `langchain-oceanbase[pyseekdb]`
   * **Technical Specs**: Model `all-MiniLM-L6-v2`, 384 dimensions, ONNX Runtime inference
-* **Embedded SeekDB (optional)**: Run local embedded [SeekDB](https://github.com/oceanbase/pyseekdb) through pyobvector (`path=` or `pyseekdb_client=` on `OceanbaseVectorStore`) without OceanBase; requires `pyobvector[pyseekdb]` or a recent `pyseekdb` that installs `pylibseekdb`. See [docs/vectorstores.md#embedded-seekdb-optional](./docs/vectorstores.md#embedded-seekdb-optional) and [examples/embedded_seekdb_vectorstore.py](./examples/embedded_seekdb_vectorstore.py).
+* **Embedded seekdb (optional)**: Run local embedded [seekdb](https://github.com/oceanbase/pyseekdb) through pyobvector (`path=` or `pyseekdb_client=` on `OceanbaseVectorStore`) without OceanBase; install `langchain-oceanbase[pyseekdb]` or a recent `pyseekdb` that installs `pylibseekdb`. See [docs/vectorstores.md#embedded-seekdb-optional](./docs/vectorstores.md#embedded-seekdb-optional) and [examples/embedded_seekdb_vectorstore.py](./examples/embedded_seekdb_vectorstore.py).
 * **Similarity Search**: Perform efficient similarity searches on vector data with multiple distance metrics (L2, cosine, inner product).
 * **Hybrid Search**: Combine vector search with sparse vector search and full-text search for improved results with configurable weights.
 * **Maximal Marginal Relevance**: Filter for diversity in search results to avoid redundant information.
@@ -81,9 +91,9 @@ pip install -U langchain-oceanbase
 - Python >=3.11
 - langchain-core >=1.0.0
 - pyobvector >=0.2.0 (required for database client)
-- pyseekdb >=0.1.0 (required dependency; use **>=1.2** on supported platforms for **embedded SeekDB** and the `pylibseekdb` runtime)
+- `pyseekdb` extra (optional; install `langchain-oceanbase[pyseekdb]` for built-in embeddings and embedded seekdb support)
 
-> **Tip**: The current version (0.4.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
+> **Tip**: The current version (0.5.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
@@ -92,7 +102,13 @@ pip install -U langchain-oceanbase
 
 ### Built-in Embedding Dependencies
 
-For built-in embedding functionality (no API keys required), `pyseekdb` is automatically installed as an optional dependency. It provides:
+For built-in embedding functionality (no API keys required), install the optional `pyseekdb` extra:
+
+```bash
+pip install -U "langchain-oceanbase[pyseekdb]"
+```
+
+It provides:
 - Local ONNX-based embedding inference
 - Default embedding model: `all-MiniLM-L6-v2` (384 dimensions)
 - No external API calls needed
@@ -118,8 +134,8 @@ docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 -p 2881:2881 
 Choose your preferred format:
 
 - **[Jupyter Notebook](./docs/vectorstores.ipynb)** - Interactive notebook with executable code cells
-- **[Markdown](./docs/vectorstores.md)** - Static documentation for easy reading (includes [embedded SeekDB](./docs/vectorstores.md#embedded-seekdb-optional))
-- **[Embedded SeekDB example](./examples/embedded_seekdb_vectorstore.py)** - Runnable script using local SeekDB without Docker
+- **[Markdown](./docs/vectorstores.md)** - Static documentation for easy reading (includes [embedded seekdb](./docs/vectorstores.md#embedded-seekdb-optional))
+- **[Embedded seekdb example](./examples/embedded_seekdb_vectorstore.py)** - Runnable script using local seekdb without Docker
 
 ### Additional Resources
 
@@ -129,7 +145,10 @@ Choose your preferred format:
 - **[Hybrid Search Guide (Markdown)](./docs/hybrid_search.md)** - Static documentation for hybrid search
 - **[AI Functions Guide](./docs/ai_functions.md)** - Documentation for AI Functions (AI_EMBED, AI_COMPLETE, AI_RERANK)
 - **[AI Functions Guide (Notebook)](./docs/ai_functions.ipynb)** - Interactive notebook for AI Functions
+- **[LangGraph Checkpoint notebook](./docs/langgraph_checkpoint.ipynb)** - Interactive notebook for `OceanBaseCheckpointSaver`
 - **[Migration Guide](./docs/migration_guide.md)** - Migrating to LangGraph Checkpointer and schema changes
+- **[LangGraph Store notebook](./docs/langgraph_store.ipynb)** - Interactive notebook for `OceanBaseStore`
+- **[LangGraph Store example](./examples/langgraph_store.py)** - Runnable example for namespace-scoped memory, semantic search, and TTL
 
 #### Built-in Embedding Sections:
 - [**Installation**](./docs/embeddings.md#installation) - Install required packages
@@ -155,6 +174,46 @@ Choose your preferred format:
 - [**Model Configuration API**](./docs/ai_functions.md#model-configuration-api) - Setup AI models and endpoints
 
 ### Quick Start
+
+#### Using LangGraph Store Memory
+
+```python
+from langchain_core.embeddings import Embeddings
+from langchain_oceanbase import OceanBaseStore
+
+
+class DemoEmbeddings(Embeddings):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        lowered = text.lower()
+        return [
+            1.0 if "python" in lowered else 0.0,
+            1.0 if "database" in lowered else 0.0,
+            float((len(lowered) % 13) + 1),
+        ]
+
+
+store = OceanBaseStore(
+    connection_args={
+        "host": "127.0.0.1",
+        "port": "2881",
+        "user": "root@test",
+        "password": "",
+        "db_name": "test",
+    },
+    index={"dims": 3, "embed": DemoEmbeddings(), "fields": ["memory"]},
+    ttl_config={"refresh_on_read": True, "default_ttl": 60},
+)
+store.setup()
+
+namespace = ("memories", "user-123")
+store.put(namespace, "favorite-language", {"memory": "The user prefers Python."})
+results = store.search(namespace, query="python", limit=3)
+```
+
+See [examples/langgraph_store.py](./examples/langgraph_store.py) for a complete runnable example.
 
 #### Using Built-in Embedding (No API Keys Required)
 
@@ -297,7 +356,7 @@ You can verify this example without OceanBase (imports and constructor only) by 
    docker run --name=oceanbase -e MODE=mini -e OB_SERVER_IP=127.0.0.1 \
        -p 2881:2881 -d oceanbase/oceanbase-ce:4.4.1.0-100000032025101610
    ```
-2. Alternatively, use SeekDB which also supports AI functions
+2. Alternatively, use seekdb which also supports AI functions
 3. Check current version:
    ```sql
    SELECT version();
@@ -381,7 +440,7 @@ cd langchain-oceanbase
 # start OceanBase
 make docker-up
 
-# or start SeekDB (lightweight alternative)
+# or start seekdb (lightweight alternative)
 make docker-up-seek
 ```
 
@@ -410,7 +469,7 @@ python examples/hybrid_search_demo.py
 ## Files of interest
 
 - `docker-compose.yml` — OceanBase CE service for local development
-- `docker-compose.seekdb.yml` — SeekDB lightweight alternative
+- `docker-compose.seekdb.yml` — seekdb lightweight alternative
 - `Makefile` — convenience targets: `make docker-up`, `make docker-down`, `make docker-logs`, plus format/lint/typecheck/test helpers
 - `CONTRIBUTING.md` — developer setup, running tests, code style, PR process
 - `examples/` — `quickstart.py`, `rag_demo.py`, `hybrid_search_demo.py`, and `examples/README.md`
@@ -423,7 +482,7 @@ make test
 # or: poetry run pytest tests/unit_tests/
 ```
 
-- Integration tests (requires OceanBase/SeekDB, e.g. `make docker-up`):
+- Integration tests (requires OceanBase/seekdb, e.g. `make docker-up`):
 ```bash
 make docker-up
 make integration_tests

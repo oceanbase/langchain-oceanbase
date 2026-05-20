@@ -84,6 +84,51 @@ def _is_empty_result_resource_closed_error(error: ResourceClosedError) -> bool:
     return "does not return rows" in str(error)
 
 
+def _materialize_result_rows(results: Any) -> List[Any]:
+    """Convert backend search results to a concrete list of rows."""
+    if results is None:
+        return []
+
+    fetchall = getattr(results, "fetchall", None)
+    if callable(fetchall):
+        try:
+            return list(fetchall())
+        except ResourceClosedError as exc:
+            if _is_empty_result_resource_closed_error(exc):
+                return []
+            raise
+
+    try:
+        return list(results)
+    except ResourceClosedError as exc:
+        if _is_empty_result_resource_closed_error(exc):
+            return []
+        raise
+
+
+def _result_field_from_hybrid_result(
+    result: Any, field_name: str, default: Any = None
+) -> Any:
+    if not isinstance(result, dict):
+        return default
+
+    if field_name in result:
+        return result[field_name]
+
+    qualified_suffix = f".{field_name}"
+    for key, value in result.items():
+        if isinstance(key, str) and key.endswith(qualified_suffix):
+            return value
+
+    return default
+
+
+def _result_id_from_hybrid_result(result: Any, primary_field: str) -> Any | None:
+    if isinstance(result, dict):
+        return _result_field_from_hybrid_result(result, primary_field)
+    return result[2] if len(result) > 2 else result[0]
+
+
 class OceanbaseVectorStore(VectorStore):
     """Oceanbase vector store integration.
 
@@ -536,14 +581,7 @@ class OceanbaseVectorStore(VectorStore):
         Returns:
             List[Document] or List[Tuple[Document, float]]: Converted documents
         """
-        try:
-            rows = results.fetchall()
-        except ResourceClosedError as exc:
-            # Embedded SeekDB can surface empty ANN / GET results as a closed
-            # SQLAlchemy result instead of an iterable row set.
-            if _is_empty_result_resource_closed_error(exc):
-                return []
-            raise
+        rows = _materialize_result_rows(results)
 
         if include_score:
             return [
@@ -734,12 +772,7 @@ class OceanbaseVectorStore(VectorStore):
             ],
         )
         documents_by_id: dict[str, Document] = {}
-        try:
-            rows = res.fetchall()
-        except ResourceClosedError as exc:
-            if _is_empty_result_resource_closed_error(exc):
-                return []
-            raise
+        rows = _materialize_result_rows(res)
 
         for row in rows:
             document_id = str(row[2])
@@ -1034,9 +1067,13 @@ class OceanbaseVectorStore(VectorStore):
 
             if isinstance(result, dict):
                 # Dictionary format: extract fields by name
-                doc_id = result.get(self.primary_field)
-                page_content = result.get(self.text_field, "")
-                metadata = result.get(self.metadata_field, {})
+                doc_id = _result_field_from_hybrid_result(result, self.primary_field)
+                page_content = _result_field_from_hybrid_result(
+                    result, self.text_field, ""
+                )
+                metadata = _result_field_from_hybrid_result(
+                    result, self.metadata_field, {}
+                )
 
                 # Ensure metadata is a dict, not a JSON string
                 if isinstance(metadata, str):
@@ -1478,11 +1515,9 @@ class OceanbaseVectorStore(VectorStore):
 
         # Process vector results (higher weight for semantic similarity)
         for i, result in enumerate(vector_list):
-            if isinstance(result, dict):
-                doc_id = result.get(self.primary_field)
-            else:
-                # For tuple format: (text_field, metadata_field, primary_field)
-                doc_id = result[2] if len(result) > 2 else result[0]
+            doc_id = _result_id_from_hybrid_result(result, self.primary_field)
+            if doc_id in (None, ""):
+                continue
             # Normalize to 0-1
             vector_score = 1.0 - (i / len(vector_list)) if vector_list else 0
             combined_scores[doc_id] = (
@@ -1491,11 +1526,9 @@ class OceanbaseVectorStore(VectorStore):
 
         # Process full-text results (lower weight for keyword matching)
         for i, result in enumerate(fulltext_list):
-            if isinstance(result, dict):
-                doc_id = result.get(self.primary_field)
-            else:
-                # For tuple format: (text_field, metadata_field, primary_field)
-                doc_id = result[2] if len(result) > 2 else result[0]
+            doc_id = _result_id_from_hybrid_result(result, self.primary_field)
+            if doc_id in (None, ""):
+                continue
             # Normalize to 0-1
             fulltext_score = 1.0 - (i / len(fulltext_list)) if fulltext_list else 0
             combined_scores[doc_id] = (
@@ -1511,20 +1544,16 @@ class OceanbaseVectorStore(VectorStore):
         # Prefer vector results over fulltext results when both exist
         id_to_result = {}
         for result in vector_list:
-            if isinstance(result, dict):
-                result_id = result.get(self.primary_field)
-            else:
-                # For tuple format: (text_field, metadata_field, primary_field)
-                result_id = result[2] if len(result) > 2 else result[0]
+            result_id = _result_id_from_hybrid_result(result, self.primary_field)
+            if result_id in (None, ""):
+                continue
             if result_id not in id_to_result:
                 id_to_result[result_id] = result
         # Add fulltext results only if not already in the mapping
         for result in fulltext_list:
-            if isinstance(result, dict):
-                result_id = result.get(self.primary_field)
-            else:
-                # For tuple format: (text_field, metadata_field, primary_field)
-                result_id = result[2] if len(result) > 2 else result[0]
+            result_id = _result_id_from_hybrid_result(result, self.primary_field)
+            if result_id in (None, ""):
+                continue
             if result_id not in id_to_result:
                 id_to_result[result_id] = result
 
@@ -1572,26 +1601,22 @@ class OceanbaseVectorStore(VectorStore):
         for modality_type, results in all_results:
             weight = modality_weights.get(modality_type, 0.1)
 
-            # Convert CursorResult to list if needed
             results_list = []
-            if results:
-                for row in results:
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for row in _materialize_result_rows(results):
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
 
             # Store converted results for later use
             all_converted_results[modality_type] = results_list
 
             for i, result in enumerate(results_list):
-                if isinstance(result, dict):
-                    doc_id = result.get(self.primary_field)
-                else:
-                    # For tuple format: (text_field, metadata_field, primary_field)
-                    doc_id = result[2] if len(result) > 2 else result[0]
+                doc_id = _result_id_from_hybrid_result(result, self.primary_field)
+                if doc_id in (None, ""):
+                    continue
                 # Normalize score based on position (higher position = lower score)
                 normalized_score = 1.0 - (i / len(results_list)) if results_list else 0
                 combined_scores[doc_id] = (
@@ -1610,11 +1635,11 @@ class OceanbaseVectorStore(VectorStore):
         for modality_type in modality_priority:
             if modality_type in all_converted_results:
                 for result in all_converted_results[modality_type]:
-                    if isinstance(result, dict):
-                        result_id = result.get(self.primary_field)
-                    else:
-                        # For tuple format: (text_field, metadata_field, primary_field)
-                        result_id = result[2] if len(result) > 2 else result[0]
+                    result_id = _result_id_from_hybrid_result(
+                        result, self.primary_field
+                    )
+                    if result_id in (None, ""):
+                        continue
                     if result_id not in id_to_result:
                         id_to_result[result_id] = result
 
@@ -1848,16 +1873,15 @@ class OceanbaseVectorStore(VectorStore):
             single_results = all_results[0][1]
             # Convert CursorResult to list and take first k results
             results_list = []
-            if single_results:
-                for i, row in enumerate(single_results):
-                    if i >= k:
-                        break
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for i, row in enumerate(_materialize_result_rows(single_results)):
+                if i >= k:
+                    break
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
             return self._convert_list_results_to_documents(results_list)
         else:
             # Multiple modalities, combine and rank
@@ -1932,16 +1956,15 @@ class OceanbaseVectorStore(VectorStore):
             # Single modality, convert CursorResult to list
             single_results = all_results[0][1]
             results_list = []
-            if single_results:
-                for i, row in enumerate(single_results):
-                    if i >= k:
-                        break
-                    if hasattr(row, "_asdict"):
-                        results_list.append(row._asdict())
-                    elif hasattr(row, "_mapping"):
-                        results_list.append(dict(row._mapping))
-                    else:
-                        results_list.append(row)
+            for i, row in enumerate(_materialize_result_rows(single_results)):
+                if i >= k:
+                    break
+                if hasattr(row, "_asdict"):
+                    results_list.append(row._asdict())
+                elif hasattr(row, "_mapping"):
+                    results_list.append(dict(row._mapping))
+                else:
+                    results_list.append(row)
             return self._convert_list_results_to_documents(results_list)
         else:
             combined_results = self._combine_multi_modal_results(all_results, k)

@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from unittest.mock import MagicMock, patch
 
@@ -182,3 +183,100 @@ class TestOceanbaseVectorStoreUnit:
 
         with pytest.raises(ResourceClosedError, match="unexpected close"):
             vectorstore.similarity_search("query", k=1)
+
+    def test_advanced_hybrid_search_returns_empty_when_backend_returns_no_rows(
+        self, vectorstore, mock_client
+    ):
+        """Vector-only hybrid search should map empty backend results to []."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        class EmptyClosedResult:
+            def fetchall(self):
+                raise ResourceClosedError(
+                    "This result object does not return rows. It has been closed automatically."
+                )
+
+            def __iter__(self):
+                raise ResourceClosedError(
+                    "This result object does not return rows. It has been closed automatically."
+                )
+
+        mock_result = EmptyClosedResult()
+        mock_client.ann_search.return_value = mock_result
+
+        docs = vectorstore.advanced_hybrid_search(vector_query="query", k=1)
+
+        assert docs == []
+
+    def test_hybrid_result_combiner_ignores_results_without_ids(self, vectorstore):
+        combined = vectorstore._combine_multi_modal_results(
+            [
+                ("vector", [{"document": "", "metadata": {}}]),
+                (
+                    "fulltext",
+                    [
+                        {
+                            "id": "doc-1",
+                            "document": "useful content",
+                            "metadata": {"topic": "AI"},
+                        }
+                    ],
+                ),
+            ],
+            k=2,
+        )
+
+        docs = vectorstore._convert_list_results_to_documents(combined)
+
+        assert [doc.id for doc in docs] == ["doc-1"]
+        assert docs[0].metadata == {"topic": "AI"}
+
+    def test_hybrid_result_combiner_reads_dotted_row_keys(self, vectorstore):
+        combined = vectorstore._combine_multi_modal_results(
+            [
+                (
+                    "vector",
+                    [
+                        {
+                            "test_table.id": "doc-1",
+                            "test_table.document": "useful content",
+                            "test_table.metadata": '{"topic": "AI"}',
+                        }
+                    ],
+                ),
+                (
+                    "sparse",
+                    [
+                        {
+                            "test_table.id": "doc-2",
+                            "test_table.document": "backup content",
+                            "test_table.metadata": '{"topic": "ML"}',
+                        }
+                    ],
+                ),
+            ],
+            k=2,
+        )
+
+        docs = vectorstore._convert_list_results_to_documents(combined)
+
+        assert [doc.id for doc in docs] == ["doc-1", "doc-2"]
+        assert [doc.metadata for doc in docs] == [{"topic": "AI"}, {"topic": "ML"}]
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("pyseekdb") is not None,
+        reason="pyseekdb is installed",
+    )
+    def test_default_embedding_requires_optional_dependency(self):
+        """Default embeddings should fail with an actionable optional-dependency message."""
+        with pytest.raises(ImportError, match="langchain-oceanbase\\[pyseekdb\\]"):
+            OceanbaseVectorStore(
+                connection_args={
+                    "host": "localhost",
+                    "port": "2881",
+                    "user": "root",
+                    "password": "",
+                    "db_name": "test",
+                },
+                table_name="test_table",
+            )
