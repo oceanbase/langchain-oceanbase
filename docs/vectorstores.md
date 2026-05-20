@@ -57,7 +57,7 @@ Instead of running an OceanBase server, you can use **embedded SeekDB** via [pyo
 **Install** (installs the embedded runtime `pylibseekdb` on supported platforms):
 
 ```text
-pip install -U "langchain-oceanbase" "pyobvector[pyseekdb]"
+pip install -U "langchain-oceanbase[pyseekdb]"
 ```
 
 If imports fail, upgrade `pyseekdb` so the platform wheel for `pylibseekdb` is installed, for example:

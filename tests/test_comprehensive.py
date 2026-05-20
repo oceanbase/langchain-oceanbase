@@ -144,12 +144,11 @@ def test_basic_functionality() -> bool:
 
     try:
         from langchain_core.documents import Document
+        from langchain_core.embeddings import FakeEmbeddings
 
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        # Create embeddings using DefaultEmbeddingFunctionAdapter
-        embeddings = DefaultEmbeddingFunctionAdapter()
+        embeddings = FakeEmbeddings(size=384)
 
         connection_args = _ci_connection_args()
 
@@ -238,11 +237,11 @@ def test_metric_types() -> bool:
 
     try:
         from langchain_core.documents import Document
+        from langchain_core.embeddings import FakeEmbeddings
 
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        embeddings = DefaultEmbeddingFunctionAdapter()
+        embeddings = FakeEmbeddings(size=384)
 
         connection_args = _ci_connection_args()
 
@@ -290,10 +289,11 @@ def test_from_texts() -> bool:
     print("\nTesting from_texts method...")
 
     try:
-        from langchain_oceanbase.embedding_utils import DefaultEmbeddingFunctionAdapter
+        from langchain_core.embeddings import FakeEmbeddings
+
         from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
-        embeddings = DefaultEmbeddingFunctionAdapter()
+        embeddings = FakeEmbeddings(size=384)
 
         connection_args = _ci_connection_args()
 
