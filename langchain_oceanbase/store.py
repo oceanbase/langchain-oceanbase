@@ -133,20 +133,28 @@ class OceanBaseStore(BaseStore):
             return results
 
     def _create_client(self, **kwargs: Any) -> None:
-        host = self.connection_args.get("host", "localhost")
-        port = self.connection_args.get("port", "2881")
-        user = self.connection_args.get("user", "root@test")
-        password = self.connection_args.get("password", "")
+        path = self.connection_args.get("path")
         db_name = self.connection_args.get("db_name", "test")
 
         try:
-            self.obvector: ObVecClient = ObVecClient(
-                uri=f"{host}:{port}",
-                user=user,
-                password=password,
-                db_name=db_name,
-                **kwargs,
-            )
+            if path is not None:
+                self.obvector: ObVecClient = ObVecClient(
+                    path=path,
+                    db_name=db_name,
+                    **kwargs,
+                )
+            else:
+                host = self.connection_args.get("host", "localhost")
+                port = self.connection_args.get("port", "2881")
+                user = self.connection_args.get("user", "root@test")
+                password = self.connection_args.get("password", "")
+                self.obvector = ObVecClient(
+                    uri=f"{host}:{port}",
+                    user=user,
+                    password=password,
+                    db_name=db_name,
+                    **kwargs,
+                )
         except Exception as exc:
             error_msg = str(exc).lower()
             if (
@@ -156,8 +164,8 @@ class OceanBaseStore(BaseStore):
             ):
                 raise OceanBaseConnectionError(
                     f"Failed to connect to OceanBase: {exc}",
-                    host=host,
-                    port=port,
+                    host=self.connection_args.get("host", "localhost"),
+                    port=self.connection_args.get("port", "2881"),
                 ) from exc
             raise
 
