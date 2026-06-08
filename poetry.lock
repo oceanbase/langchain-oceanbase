@@ -1720,20 +1720,20 @@ langchain-core = ">=0.3.75,<2.0.0"
 
 [[package]]
 name = "langgraph"
-version = "0.6.11"
+version = "1.0.1"
 description = "Building stateful, multi-actor applications with LLMs"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "langgraph-0.6.11-py3-none-any.whl", hash = "sha256:49268de69d85b7db3da9e2ca582a474516421c1c44be5cff390416cfa6967faa"},
-    {file = "langgraph-0.6.11.tar.gz", hash = "sha256:cd5373d0a59701ab39c9f8af33a33c5704553de815318387fa7f240511e0efd7"},
+    {file = "langgraph-1.0.1-py3-none-any.whl", hash = "sha256:892f04f64f4889abc80140265cc6bd57823dd8e327a5eef4968875f2cd9013bd"},
+    {file = "langgraph-1.0.1.tar.gz", hash = "sha256:4985b32ceabb046a802621660836355dfcf2402c5876675dc353db684aa8f563"},
 ]
 
 [package.dependencies]
 langchain-core = ">=0.1"
 langgraph-checkpoint = ">=2.1.0,<4.0.0"
-langgraph-prebuilt = ">=0.6.0,<0.7.0"
+langgraph-prebuilt = ">=1.0.0,<1.1.0"
 langgraph-sdk = ">=0.2.2,<0.3.0"
 pydantic = ">=2.7.4"
 xxhash = ">=3.5.0"
@@ -1771,14 +1771,14 @@ langgraph-checkpoint = ">=2.0.0"
 
 [[package]]
 name = "langgraph-prebuilt"
-version = "0.6.5"
+version = "1.0.1"
 description = "Library with high-level APIs for creating and executing LangGraph agents and tools."
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "langgraph_prebuilt-0.6.5-py3-none-any.whl", hash = "sha256:b6ceb5db31c16a30a3ee3c0b923667f02e7c9e27852621abf9d5bd5603534141"},
-    {file = "langgraph_prebuilt-0.6.5.tar.gz", hash = "sha256:9c63e9e867e62b345805fd1e8ea5c2df5cc112e939d714f277af84f2afe5950d"},
+    {file = "langgraph_prebuilt-1.0.1-py3-none-any.whl", hash = "sha256:8c02e023538f7ef6ad5ed76219ba1ab4f6de0e31b749e4d278f57a8a95eec9f7"},
+    {file = "langgraph_prebuilt-1.0.1.tar.gz", hash = "sha256:ecbfb9024d9d7ed9652dde24eef894650aaab96bf79228e862c503e2a060b469"},
 ]
 
 [package.dependencies]
@@ -3179,14 +3179,14 @@ rsa = ["cryptography"]
 
 [[package]]
 name = "pyobvector"
-version = "0.2.26"
+version = "0.2.28"
 description = "A python SDK for OceanBase Vector Store, based on SQLAlchemy, compatible with Milvus API."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyobvector-0.2.26-py3-none-any.whl", hash = "sha256:82bcc81de40c74c4a1e30ff8d85cce1bdc344a5290cd27e252ecb5fc9e929b23"},
-    {file = "pyobvector-0.2.26.tar.gz", hash = "sha256:f393e72bb1af75d7bf61334beecf94097d1cfbaf70aac6c1f564faaf2280df7c"},
+    {file = "pyobvector-0.2.28-py3-none-any.whl", hash = "sha256:36708fc0020307890b9001035904ff14719b81e20e58f2a97f7f3739dad53c72"},
+    {file = "pyobvector-0.2.28.tar.gz", hash = "sha256:d394d66f4a7dc97c221b7584e52b329e3fe61ed96b6f248d7360e3e5a53581ce"},
 ]
 
 [package.dependencies]
@@ -3194,7 +3194,6 @@ aiomysql = ">=0.3.2"
 numpy = ">=1.17.0"
 pydantic = ">=2.7.0,<3"
 pymysql = ">=1.1.1"
-pyseekdb = {version = ">=0.1.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"pyseekdb\""}
 sqlalchemy = ">=1.4,<=3"
 sqlglot = ">=26.0.1"
 
@@ -3219,14 +3218,14 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyseekdb"
-version = "1.2.0.post2"
+version = "1.3.0"
 description = "A unified Python client for seekdb that supports embedded, server, and OceanBase."
 optional = true
 python-versions = "<4,>=3.11"
 groups = ["main"]
 markers = "extra == \"pyseekdb\""
 files = [
-    {file = "pyseekdb-1.2.0.post2-py3-none-any.whl", hash = "sha256:2ace81ac64777ec2c615faf4a384f42922ac6b4648a136a010e90e7a1ed81c7a"},
+    {file = "pyseekdb-1.3.0-py3-none-any.whl", hash = "sha256:cd32c8e587fd1b128e10fbef5a18ffdf420aad06075eeb46e4a4ad3fde81216a"},
 ]
 
 [package.dependencies]
