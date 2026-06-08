@@ -591,7 +591,11 @@ class OceanbaseVectorStore(VectorStore):
         ):
             doc_id = str(row[2]) if row[2] is not None else None
 
-        score = row[3] if len(row) > 3 else (row[2] if include_score and len(row) > 2 else None)
+        score = (
+            row[3]
+            if len(row) > 3
+            else (row[2] if include_score and len(row) > 2 else None)
+        )
 
         return Document(id=doc_id, page_content=page_content, metadata=metadata), score
 

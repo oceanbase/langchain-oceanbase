@@ -232,25 +232,55 @@ jobs:
       - name: Start ${{ matrix.db-type }} container
         if: matrix.image != '' && matrix.db-type != 'mysql'
         run: |
-          set -e
+          set -euo pipefail
           echo "Starting ${{ matrix.db-type }} container..."
+          for attempt in 1 2 3; do
+            echo "Pull attempt ${attempt} for ${{ matrix.image }}"
+            if docker pull "${{ matrix.image }}"; then
+              break
+            fi
+
+            if [ "${attempt}" -eq 3 ]; then
+              echo "Failed to pull ${{ matrix.image }} after ${attempt} attempts"
+              exit 1
+            fi
+
+            sleep 15
+          done
+
+          docker rm -f "langchain_${{ matrix.db-type }}_test" >/dev/null 2>&1 || true
           docker run -d --name "langchain_${{ matrix.db-type }}_test" \
             -e MODE=${{ matrix.mode }} \
             -p ${{ matrix.port }}:2881 \
-            ${{ matrix.image }}
+            "${{ matrix.image }}"
           echo "${{ matrix.db-type }} container started"
 
       - name: Start mysql container
         if: matrix.db-type == 'mysql'
         run: |
-          set -e
+          set -euo pipefail
           echo "Starting mysql container..."
+          for attempt in 1 2 3; do
+            echo "Pull attempt ${attempt} for ${{ matrix.image }}"
+            if docker pull "${{ matrix.image }}"; then
+              break
+            fi
+
+            if [ "${attempt}" -eq 3 ]; then
+              echo "Failed to pull ${{ matrix.image }} after ${attempt} attempts"
+              exit 1
+            fi
+
+            sleep 15
+          done
+
+          docker rm -f "langchain_mysql_test" >/dev/null 2>&1 || true
           docker run -d --name "langchain_mysql_test" \
             -e MYSQL_ROOT_PASSWORD=rootpass \
             -e MYSQL_DATABASE=test \
             -e MYSQL_ROOT_HOST=% \
             -p ${{ matrix.port }}:3306 \
-            ${{ matrix.image }}
+            "${{ matrix.image }}"
           echo "mysql container started"
 
       # OceanBase: wait for "boot success!"
