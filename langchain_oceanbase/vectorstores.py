@@ -7,6 +7,7 @@ import logging
 import math
 import traceback
 import uuid
+from numbers import Real
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -568,6 +569,32 @@ class OceanbaseVectorStore(VectorStore):
                 self.obvector.set_ob_hnsw_ef_search(ef_search)
                 self.hnsw_ef_search = ef_search
 
+    @staticmethod
+    def _decode_result_metadata(metadata_raw: Any) -> Any:
+        if isinstance(metadata_raw, (str, bytes)):
+            try:
+                return json.loads(metadata_raw)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+
+        return metadata_raw or {}
+
+    def _convert_result_row_to_document(
+        self, row: Any, include_score: bool = False
+    ) -> Tuple[Document, Any | None]:
+        page_content = str(row[0]) if len(row) > 0 and row[0] is not None else ""
+        metadata = self._decode_result_metadata(row[1] if len(row) > 1 else {})
+
+        doc_id = None
+        if len(row) > 2 and (
+            not include_score or len(row) > 3 or not isinstance(row[2], Real)
+        ):
+            doc_id = str(row[2]) if row[2] is not None else None
+
+        score = row[3] if len(row) > 3 else (row[2] if include_score and len(row) > 2 else None)
+
+        return Document(id=doc_id, page_content=page_content, metadata=metadata), score
+
     def _convert_results_to_documents(
         self, results: Any, include_score: bool = False
     ) -> List[Document] | List[Tuple[Document, float]]:
@@ -584,25 +611,17 @@ class OceanbaseVectorStore(VectorStore):
         rows = _materialize_result_rows(results)
 
         if include_score:
-            return [
-                (
-                    Document(
-                        id=str(r[2]),
-                        page_content=r[0],
-                        metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
-                    ),
-                    r[3],
+            documents_with_scores = []
+            for row in rows:
+                document, score = self._convert_result_row_to_document(
+                    row, include_score=True
                 )
-                for r in rows
-            ]
+                documents_with_scores.append((document, score))
+            return documents_with_scores
         else:
             return [
-                Document(
-                    id=str(r[2]),
-                    page_content=r[0],
-                    metadata=json.loads(r[1]) if isinstance(r[1], str) else r[1],
-                )
-                for r in rows
+                self._convert_result_row_to_document(row, include_score=False)[0]
+                for row in rows
             ]
 
     def _parse_metric_type_str_to_dist_func(self) -> Any:
