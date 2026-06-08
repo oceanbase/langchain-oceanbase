@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-This package contains the LangChain integration with OceanBase. **Current version: 0.5.0**
+This package contains the LangChain integration with OceanBase. **Current version: 0.5.1**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -16,12 +16,13 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
-## What's New in 0.5.0
+## What's New in 0.5.1
 
-- **The full LangChain persistence pack is now in one release**: `OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, and `OceanBaseStore` are all supported in `0.5.0`.
-- **OceanBase and seekdb are full-surface backends**: both cover vectorstore, checkpoint, and store workflows, with hybrid retrieval support on the vector side.
+- **Patch release for the 0.5.x line**: `0.5.1` keeps the same package surface as `0.5.0` while pulling in dependency and CI maintenance updates.
+- **The full LangChain persistence pack remains in one release**: `OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, and `OceanBaseStore` are all supported in `0.5.1`.
+- **OceanBase and seekdb remain full-surface backends**: both cover vectorstore, checkpoint, and store workflows, with hybrid retrieval support on the vector side.
 - **MySQL remains the compatibility option for on-prem deployments**: if your environment already standardizes on MySQL, you can use it for checkpoint and store workloads without taking on vector infrastructure.
-- **Built-in embeddings and embedded seekdb are now explicitly optional**: install `langchain-oceanbase[pyseekdb]` when you want the bundled embedding runtime or local embedded seekdb.
+- **Built-in embeddings and embedded seekdb remain explicitly optional**: install `langchain-oceanbase[pyseekdb]` when you want the bundled embedding runtime or local embedded seekdb.
 
 ## LangChain Integration
 
@@ -33,7 +34,7 @@ For LangGraph applications, the recommended persistence surfaces are:
 - `OceanBaseCheckpointSaver` for graph state, replay, and time-travel workflows
 - `OceanBaseStore` for long-term memory, retrieval, and TTL-backed storage
 
-In `0.5.0`, the package story is straightforward:
+In `0.5.1`, the package story is straightforward:
 - OceanBase: full pack support for vectorstore + checkpoint + store
 - seekdb: full pack support for vectorstore + checkpoint + store
 - MySQL: compatible checkpoint + store backend for existing on-prem MySQL estates
@@ -41,7 +42,7 @@ In `0.5.0`, the package story is straightforward:
 Official documentation:
 https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
-## 0.5.0 Support Matrix
+## 0.5.1 Support Matrix
 
 | Backend | LangGraph checkpoint | LangGraph store | Vector store | Hybrid search | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -93,7 +94,7 @@ pip install -U langchain-oceanbase
 - pyobvector >=0.2.0 (required for database client)
 - `pyseekdb` extra (optional; install `langchain-oceanbase[pyseekdb]` for built-in embeddings and embedded seekdb support)
 
-> **Tip**: The current version (0.5.0) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
+> **Tip**: The current version (0.5.1) supports `langchain-core >=1.0.0`. See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ### Platform Support
 
