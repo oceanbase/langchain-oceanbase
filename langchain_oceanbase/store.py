@@ -72,6 +72,23 @@ class OceanBaseStore(BaseStore):
         table_name: str = "langgraph_store_items",
         **kwargs: Any,
     ) -> None:
+        """Initialize the OceanBase store.
+
+        Args:
+            connection_args: Connection parameters. Should include:
+                - host: OceanBase server host (default: "localhost")
+                - port: OceanBase server port (default: "2881")
+                - user: Database username (default: "root@test")
+                - password: Database password (default: "")
+                - db_name: Database name (default: "test")
+                - path: Embedded SeekDB data directory. When set, uses
+                  in-process SeekDB instead of a remote connection.
+                  Requires ``pip install langchain-oceanbase[pyseekdb]``.
+            index: Optional index configuration for semantic search.
+            ttl_config: Optional TTL configuration for item expiration.
+            table_name: Name of the store table (default: "langgraph_store_items").
+            **kwargs: Additional arguments passed to ObVecClient.
+        """
         self.connection_args = (
             connection_args
             if connection_args is not None
