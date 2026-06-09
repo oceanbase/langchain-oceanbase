@@ -98,6 +98,43 @@ class TestOceanbaseVectorStoreUnit:
         assert docs[0].metadata["source"] == "1"
         mock_client.ann_search.assert_called_once()
 
+    def test_similarity_search_handles_rows_without_primary_key(
+        self, vectorstore, mock_client
+    ):
+        """Backends that omit the primary key should still return documents."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [("foo", json.dumps({"source": "1"}))]
+        mock_client.ann_search.return_value = mock_result
+
+        docs = vectorstore.similarity_search("query", k=1)
+
+        assert len(docs) == 1
+        assert docs[0].id is None
+        assert docs[0].page_content == "foo"
+        assert docs[0].metadata == {"source": "1"}
+
+    def test_similarity_search_with_score_handles_rows_without_primary_key(
+        self, vectorstore, mock_client
+    ):
+        """Distance results should still parse when the backend omits the primary key."""
+        vectorstore.embedding_function.embed_query.return_value = [1.0] * 384
+
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [
+            ("foo", json.dumps({"source": "1"}), 0.25)
+        ]
+        mock_client.ann_search.return_value = mock_result
+
+        docs = vectorstore.similarity_search_with_score("query", k=1)
+
+        assert len(docs) == 1
+        assert docs[0][0].id is None
+        assert docs[0][0].page_content == "foo"
+        assert docs[0][0].metadata == {"source": "1"}
+        assert docs[0][1] == 0.25
+
     def test_delete(self, vectorstore, mock_client):
         """Test delete calls client delete."""
         vectorstore.delete(["1"])
