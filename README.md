@@ -59,6 +59,92 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 - **Hybrid retrieval with dense + sparse + full-text search**: use OceanBase, seekdb server, or embedded seekdb.
 - **Existing on-prem MySQL estates**: MySQL remains supported for checkpoint and store workflows, but not vector features.
 
+## Connection Configuration
+
+All three persistence classes (`OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, `OceanBaseStore`) accept a `connection_args` dict. The keys you provide determine whether the client connects to a remote server or runs an in-process embedded SeekDB instance.
+
+### Embedded SeekDB Mode (no server required)
+
+Set the `path` key to a local directory. No host, port, user, or password is needed. Requires `pip install langchain-oceanbase[pyseekdb]`.
+
+```python
+from langchain_oceanbase import OceanBaseCheckpointSaver, OceanBaseStore
+from langchain_oceanbase.vectorstores import OceanbaseVectorStore
+
+connection_args = {
+    "path": "./my_seekdb_data",   # local directory for SeekDB storage
+    "db_name": "test",            # logical database name (default: "test")
+}
+
+# Checkpointer
+saver = OceanBaseCheckpointSaver(connection_args=connection_args)
+saver.setup()
+
+# Store
+store = OceanBaseStore(connection_args=connection_args)
+store.setup()
+
+# Vector store
+vector_store = OceanbaseVectorStore(
+    embedding_function=my_embeddings,
+    table_name="my_vectors",
+    connection_args=connection_args,
+    embedding_dim=384,
+)
+```
+
+### Server Mode (OceanBase / SeekDB server / MySQL)
+
+Provide `host`, `port`, `user`, and `password`. This works with any MySQL-protocol-compatible backend: OceanBase, SeekDB server, or standard MySQL.
+
+```python
+# OceanBase (default port 2881)
+connection_args = {
+    "host": "127.0.0.1",
+    "port": "2881",
+    "user": "root@test",
+    "password": "",
+    "db_name": "test",
+}
+
+# SeekDB server (default port 2881)
+connection_args = {
+    "host": "127.0.0.1",
+    "port": "2881",
+    "user": "root@test",
+    "password": "",
+    "db_name": "test",
+}
+
+# MySQL (standard port 3306)
+connection_args = {
+    "host": "127.0.0.1",
+    "port": "3306",
+    "user": "root",
+    "password": "my_password",
+    "db_name": "langchain_db",
+}
+```
+
+All server-mode examples use the same classes:
+
+```python
+saver = OceanBaseCheckpointSaver(connection_args=connection_args)
+store = OceanBaseStore(connection_args=connection_args)
+vector_store = OceanbaseVectorStore(
+    embedding_function=my_embeddings,
+    table_name="my_vectors",
+    connection_args=connection_args,
+    embedding_dim=384,
+)
+```
+
+> **Note**: MySQL backends support checkpoint and store only — vector store requires OceanBase or SeekDB.
+
+### Default Connection
+
+If `connection_args` is omitted, the client defaults to `localhost:2881` with user `root@test` and no password (matching a local OceanBase Docker deployment).
+
 ## Features
 
 * **LangGraph Checkpointing**: Persist LangGraph conversation checkpoints with `OceanBaseCheckpointSaver`, including resume, replay, and time-travel workflows for multi-thread graph state. See [Migration Guide](./docs/migration_guide.md), [checkpoint notebook](./docs/langgraph_checkpoint.ipynb), and [examples/langgraph_agent.py](./examples/langgraph_agent.py).
