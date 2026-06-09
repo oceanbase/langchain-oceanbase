@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -67,10 +66,7 @@ async def oceanbase_checkpointer():
     db_path = str(root / "seekdb_data")
     saver = OceanBaseCheckpointSaver(connection_args={"db_name": "test"}, path=db_path)
     saver.setup()
-    try:
-        yield saver
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+    yield saver
 
 
 @checkpointer_test(name="OceanBaseCheckpointSaver-Server")
