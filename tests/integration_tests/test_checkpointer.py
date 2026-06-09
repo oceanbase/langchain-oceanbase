@@ -8,9 +8,7 @@ They run against embedded SeekDB when the native runtime is available.
 """
 
 import os
-import shutil
 import uuid
-from pathlib import Path
 from typing import Annotated, TypedDict
 
 import pytest
@@ -74,9 +72,13 @@ def create_checkpointer(
     )
 
 
-@pytest.fixture
-def seekdb_path(tmp_path: Path) -> str:
-    """Create an isolated embedded SeekDB path for a test."""
+@pytest.fixture(scope="session")
+def seekdb_path(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """Session-scoped embedded SeekDB path.
+
+    The embedded engine is a process-wide singleton — deleting its data
+    directory while it is still open causes segfaults (oceanbase/seekdb#870).
+    """
     if _ci_mysql_server_available():
         pytest.skip("Embedded SeekDB path fixture is not used in the mysql CI matrix.")
     if not _embedded_seekdb_runtime_available():
@@ -84,12 +86,8 @@ def seekdb_path(tmp_path: Path) -> str:
             "embedded SeekDB requires pylibseekdb (e.g. pip install 'pyseekdb>=1.2' "
             "or pip install 'pyobvector[pyseekdb]')"
         )
-    root = tmp_path / f"checkpoint_seekdb_{uuid.uuid4().hex}"
-    root.mkdir(parents=True)
-    try:
-        yield str(root / "seekdb_data")
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+    root = tmp_path_factory.mktemp("checkpoint_seekdb")
+    return str(root / "seekdb_data")
 
 
 @pytest.fixture
