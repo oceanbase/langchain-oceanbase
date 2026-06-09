@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import shutil
-import uuid
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,8 +14,8 @@ from tests.integration_tests._backend_utils import (
 )
 
 
-@pytest.fixture
-def embedded_seekdb_path(tmp_path: Path) -> str:
+@pytest.fixture(scope="session")
+def embedded_seekdb_path(tmp_path_factory: pytest.TempPathFactory) -> str:
     if ci_db_type() == "mysql":
         pytest.skip("Embedded SeekDB fixtures are not used in the mysql CI matrix.")
     if not embedded_seekdb_runtime_available():
@@ -27,12 +24,8 @@ def embedded_seekdb_path(tmp_path: Path) -> str:
             "or pip install 'pyobvector[pyseekdb]')"
         )
 
-    root = tmp_path / f"seekdb_root_{uuid.uuid4().hex}"
-    root.mkdir(parents=True)
-    try:
-        yield str(root / "seekdb_data")
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+    root = tmp_path_factory.mktemp("seekdb_root")
+    return str(root / "seekdb_data")
 
 
 @pytest.fixture

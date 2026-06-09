@@ -7,10 +7,8 @@ Tests are skipped when the native wheel is unavailable so CI without embedded su
 
 from __future__ import annotations
 
-import shutil
 import uuid
 from pathlib import Path
-from typing import Generator
 
 import pytest
 from langchain_core.documents import Document
@@ -44,15 +42,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
-def seekdb_parent_dir(tmp_path: Path) -> Generator[Path, None, None]:
-    """Isolated directory tree per test; removed in teardown."""
-    root = tmp_path / f"seekdb_root_{uuid.uuid4().hex}"
-    root.mkdir(parents=True)
-    try:
-        yield root
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+@pytest.fixture(scope="session")
+def seekdb_parent_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Session-scoped directory for embedded SeekDB data.
+
+    Not removed during the process — the embedded engine is a process-wide
+    singleton and deleting its data directory while it is still open causes
+    segfaults (see oceanbase/seekdb#870).
+    """
+    return tmp_path_factory.mktemp("seekdb_root")
 
 
 @pytest.fixture

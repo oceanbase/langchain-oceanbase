@@ -3,11 +3,6 @@
 
 from __future__ import annotations
 
-import shutil
-import uuid
-from pathlib import Path
-from typing import Generator
-
 import pytest
 from langgraph.checkpoint.base import Checkpoint, CheckpointMetadata
 
@@ -35,14 +30,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
-def seekdb_path(tmp_path: Path) -> Generator[str, None, None]:
-    root = tmp_path / f"checkpoint_seekdb_{uuid.uuid4().hex}"
-    root.mkdir(parents=True)
-    try:
-        yield str(root / "seekdb_data")
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+@pytest.fixture(scope="session")
+def seekdb_path(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """Session-scoped embedded SeekDB path.
+
+    The embedded engine is a process-wide singleton — deleting its data
+    directory while it is still open causes segfaults (oceanbase/seekdb#870).
+    """
+    root = tmp_path_factory.mktemp("checkpoint_seekdb")
+    return str(root / "seekdb_data")
 
 
 def test_setup_is_idempotent_with_embedded_seekdb(seekdb_path: str) -> None:

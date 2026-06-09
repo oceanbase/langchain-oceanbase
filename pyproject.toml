@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "langchain-oceanbase"
-version = "0.5.1"
+version = "0.5.2"
 description = "An integration package connecting OceanBase and LangChain"
 authors = ["shanhaikang.shk <shanhaikang.shk@oceanbase.com>"]
 readme = "README.md"
@@ -27,8 +27,8 @@ langgraph-checkpoint = ">=3.0.1,<5.0.0"
 # >=1.2: unified SeekDB client. Constrain pylibseekdb so the lock resolves to 1.1+ (manylinux + macOS arm64 wheels);
 # 1.0.0.post1 is Linux-wheel-only metadata and breaks Poetry on macOS arm64 / some CI installers.
 pyseekdb = { version = ">=1.2.0.post1,<3", optional = true }
-# Cap <1.2: pylibseekdb 1.2+ wheels are manylinux-only; 1.1.x includes macOS arm64 for local dev + Linux for CI
-pylibseekdb = { version = ">=1.1.0,<1.2", optional = true, markers = "sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')" }
+# >=1.3: fixes segfault in embedded mode when data dirs are reused (oceanbase/seekdb#870)
+pylibseekdb = { version = ">=1.3.0,<2", optional = true, markers = "sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')" }
 pyobvector = [
     { version = ">=0.2.25" },
     { version = ">=0.2.25", extras = ["pyseekdb"], markers = "extra == 'pyseekdb'" },
