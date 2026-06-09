@@ -61,9 +61,9 @@ https://python.langchain.com/docs/integrations/vectorstores/oceanbase/
 
 ## Connection Configuration
 
-All three persistence classes (`OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, `OceanBaseStore`) accept a `connection_args` dict. The keys you provide determine whether the client connects to a remote server or runs an in-process embedded SeekDB instance.
+All three persistence classes (`OceanbaseVectorStore`, `OceanBaseCheckpointSaver`, `OceanBaseStore`) accept a `connection_args` dict. The keys you provide determine whether the client connects to a remote server or runs an in-process embedded seekdb instance.
 
-### Embedded SeekDB Mode (no server required)
+### Embedded seekdb Mode (no server required)
 
 Set the `path` key to a local directory. No host, port, user, or password is needed. Requires `pip install langchain-oceanbase[pyseekdb]`.
 
@@ -72,7 +72,7 @@ from langchain_oceanbase import OceanBaseCheckpointSaver, OceanBaseStore
 from langchain_oceanbase.vectorstores import OceanbaseVectorStore
 
 connection_args = {
-    "path": "./my_seekdb_data",   # local directory for SeekDB storage
+    "path": "./my_seekdb_data",   # local directory for seekdb storage
     "db_name": "test",            # logical database name (default: "test")
 }
 
@@ -93,9 +93,14 @@ vector_store = OceanbaseVectorStore(
 )
 ```
 
-### Server Mode (OceanBase / SeekDB server / MySQL)
+### Server Mode (OceanBase / seekdb server / MySQL)
 
-Provide `host`, `port`, `user`, and `password`. This works with any MySQL-protocol-compatible backend: OceanBase, SeekDB server, or standard MySQL.
+Provide `host`, `port`, `user`, and `password`. This works with any MySQL-protocol-compatible backend.
+
+To set up your backend:
+- [OceanBase](https://www.oceanbase.com/product/opensource) — distributed relational database with vector support
+- [seekdb](https://www.seekdb.ai/) — lightweight vector-native database
+- MySQL — any MySQL 5.7+ or 8.0+ compatible server
 
 ```python
 # OceanBase (default port 2881)
@@ -107,7 +112,7 @@ connection_args = {
     "db_name": "test",
 }
 
-# SeekDB server (default port 2881)
+# seekdb server (default port 2881)
 connection_args = {
     "host": "127.0.0.1",
     "port": "2881",
@@ -139,7 +144,7 @@ vector_store = OceanbaseVectorStore(
 )
 ```
 
-> **Note**: MySQL backends support checkpoint and store only — vector store requires OceanBase or SeekDB.
+> **Note**: MySQL backends support checkpoint and store only — vector store requires OceanBase or seekdb.
 
 ### Default Connection
 
