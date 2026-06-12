@@ -26,6 +26,11 @@ except ImportError:
     OceanBaseCheckpointSaver = None  # type: ignore
 
 try:
+    from langchain_oceanbase.async_checkpointer import AsyncOceanBaseCheckpointSaver
+except ImportError:
+    AsyncOceanBaseCheckpointSaver = None  # type: ignore
+
+try:
     from langchain_oceanbase.store import OceanBaseStore
 except ImportError:
     OceanBaseStore = None  # type: ignore
@@ -52,6 +57,7 @@ __all__ = [
     "OceanBaseChatMessageHistory",
     "OceanBaseAIFunctions",
     "OceanBaseCheckpointSaver",
+    "AsyncOceanBaseCheckpointSaver",
     "OceanBaseStore",
     "DefaultEmbeddingFunction",
     # Exceptions

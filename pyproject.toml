@@ -33,6 +33,7 @@ pyobvector = [
     { version = ">=0.2.25" },
     { version = ">=0.2.25", extras = ["pyseekdb"], markers = "extra == 'pyseekdb'" },
 ]
+aiomysql = ">=0.2.0"
 # Pin to safe version for security (CVE-2025-69228 etc.); direct dep so Dependabot can update
 aiohttp = ">=3.13.3"
 

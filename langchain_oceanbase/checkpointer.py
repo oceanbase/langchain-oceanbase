@@ -405,8 +405,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     raise
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Async wrapper for get_tuple."""
-        return self.get_tuple(config)
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
 
     async def alist(
         self,
@@ -416,10 +419,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         before: Optional[RunnableConfig] = None,
         limit: Optional[int] = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        """Async wrapper for list."""
-        items = list(self.list(config, filter=filter, before=before, limit=limit))
-        for item in items:
-            yield item
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
+        yield  # type: ignore[misc]
 
     async def aput(
         self,
@@ -428,8 +433,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Async wrapper for put."""
-        return self.put(config, checkpoint, metadata, new_versions)
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
 
     async def aput_writes(
         self,
@@ -438,12 +446,18 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        """Async wrapper for put_writes."""
-        self.put_writes(config, writes, task_id, task_path)
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
 
     async def adelete_thread(self, thread_id: str) -> None:
-        """Async wrapper for delete_thread."""
-        self.delete_thread(thread_id)
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
 
     async def aprune(
         self,
@@ -451,8 +465,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Async wrapper for prune."""
-        self.prune(thread_ids, strategy=strategy)
+        """Not supported. Use AsyncOceanBaseCheckpointSaver for async operations."""
+        raise NotImplementedError(
+            "OceanBaseCheckpointSaver does not support async operations. "
+            "Use AsyncOceanBaseCheckpointSaver instead."
+        )
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
@@ -540,6 +557,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
     ) -> Dict[str, Any]:
         """Load channel values from the checkpoint_blobs table.
 
+        Uses a single batch query instead of one query per channel.
+
         Args:
             conn: Database connection.
             thread_id: The thread ID.
@@ -556,27 +575,31 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if not channel_versions:
             return {}
 
-        channel_values = {}
-        for channel, version in channel_versions.items():
-            query = text(
-                "SELECT `type`, `blob` FROM checkpoint_blobs "
-                "WHERE thread_id = :thread_id "
-                "AND checkpoint_ns = :checkpoint_ns "
-                "AND channel = :channel "
-                "AND version = :version"
+        params: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+        }
+        conditions = []
+        for idx, (channel, version) in enumerate(channel_versions.items()):
+            params[f"channel_{idx}"] = channel
+            params[f"version_{idx}"] = str(version)
+            conditions.append(
+                f"(channel = :channel_{idx} AND version = :version_{idx})"
             )
-            result = conn.execute(
-                query,
-                {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "channel": channel,
-                    "version": str(version),
-                },
-            )
-            row = self._result_fetchone_or_none(result)
-            if row and row[0] != "empty":
-                type_str, blob = row[0], row[1]
+
+        query = text(
+            "SELECT channel, `type`, `blob` FROM checkpoint_blobs "
+            "WHERE thread_id = :thread_id "
+            "AND checkpoint_ns = :checkpoint_ns "
+            f"AND ({' OR '.join(conditions)})"
+        )
+        result = conn.execute(query, params)
+        rows = self._result_fetchall(result)
+
+        channel_values: Dict[str, Any] = {}
+        for row in rows:
+            channel, type_str, blob = row[0], row[1], row[2]
+            if type_str != "empty":
                 decoded_blob = self._decode_storage_blob(blob)
                 if decoded_blob is not None:
                     channel_values[channel] = self.serde.loads_typed(

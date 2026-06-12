@@ -1,17 +1,12 @@
-"""Unit tests for the async checkpoint saver surface."""
+"""Unit tests for the sync checkpoint saver async surface (should raise NotImplementedError)."""
 
 from __future__ import annotations
 
 from typing import cast
-from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import CheckpointMetadata
-from langgraph.checkpoint.conformance.capabilities import (
-    BASE_CAPABILITIES,
-    DetectedCapabilities,
-)
 
 from langchain_oceanbase.checkpointer import OceanBaseCheckpointSaver
 
@@ -25,66 +20,72 @@ def saver(monkeypatch: pytest.MonkeyPatch) -> OceanBaseCheckpointSaver:
     return OceanBaseCheckpointSaver(connection_args={})
 
 
-def test_detected_capabilities_include_base_async_methods(
-    saver: OceanBaseCheckpointSaver,
-) -> None:
-    """Conformance detection should see the base async checkpoint capabilities."""
-    detected = DetectedCapabilities.from_instance(saver)
-    assert BASE_CAPABILITIES.issubset(detected.detected)
-
-
 @pytest.mark.asyncio
-async def test_aget_tuple_delegates_to_sync_method(
+async def test_aget_tuple_raises_not_implemented(
     saver: OceanBaseCheckpointSaver,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """aget_tuple should delegate to get_tuple."""
-    expected = MagicMock(name="checkpoint_tuple")
-    get_tuple = MagicMock(return_value=expected)
-    monkeypatch.setattr(saver, "get_tuple", get_tuple)
-
+    """aget_tuple should raise NotImplementedError."""
     config: RunnableConfig = {
         "configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}
     }
-    result = await saver.aget_tuple(config)
-
-    get_tuple.assert_called_once_with(config)
-    assert result is expected
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        await saver.aget_tuple(config)
 
 
 @pytest.mark.asyncio
-async def test_alist_materializes_sync_results_before_async_yield(
+async def test_alist_raises_not_implemented(
     saver: OceanBaseCheckpointSaver,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """alist should exhaust the sync iterator before the async generator yields."""
-    events: list[str] = []
-    expected = [
-        MagicMock(name="checkpoint_tuple_1"),
-        MagicMock(name="checkpoint_tuple_2"),
-    ]
+    """alist should raise NotImplementedError."""
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        async for _ in saver.alist(None):
+            pass
 
-    def sync_items() -> object:
-        events.append("start")
-        yield expected[0]
-        events.append("after-first-yield")
-        yield expected[1]
-        events.append("after-second-yield")
 
-    monkeypatch.setattr(
-        saver,
-        "list",
-        lambda *args, **kwargs: cast(object, sync_items()),
-    )
+@pytest.mark.asyncio
+async def test_aput_raises_not_implemented(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """aput should raise NotImplementedError."""
+    config: RunnableConfig = {
+        "configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}
+    }
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        await saver.aput(config, {}, {}, {})  # type: ignore[arg-type]
 
-    results = []
-    async for item in saver.alist(None):
-        results.append(item)
-        if len(results) == 1:
-            break
 
-    assert results == [expected[0]]
-    assert events == ["start", "after-first-yield", "after-second-yield"]
+@pytest.mark.asyncio
+async def test_aput_writes_raises_not_implemented(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """aput_writes should raise NotImplementedError."""
+    config: RunnableConfig = {
+        "configurable": {
+            "thread_id": "thread-1",
+            "checkpoint_ns": "",
+            "checkpoint_id": "cp-1",
+        }
+    }
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        await saver.aput_writes(config, [], "task-1")
+
+
+@pytest.mark.asyncio
+async def test_adelete_thread_raises_not_implemented(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """adelete_thread should raise NotImplementedError."""
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        await saver.adelete_thread("thread-1")
+
+
+@pytest.mark.asyncio
+async def test_aprune_raises_not_implemented(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """aprune should raise NotImplementedError."""
+    with pytest.raises(NotImplementedError, match="AsyncOceanBaseCheckpointSaver"):
+        await saver.aprune(["thread-1"])
 
 
 def test_prepare_metadata_matches_langgraph_serialization_rules(
