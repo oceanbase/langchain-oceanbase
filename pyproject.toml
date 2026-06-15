@@ -75,7 +75,7 @@ optional = true
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-ipykernel = "^6.29.5"
+ipykernel = ">=6.29.5,<8.0.0"
 pre-commit = ">=3.7,<5.0"
 # Pin to safe version for security (Dependabot security advisory); also makes it a direct dep so Dependabot can update
 virtualenv = ">=20.36.1"
