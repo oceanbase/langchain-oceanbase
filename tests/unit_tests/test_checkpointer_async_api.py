@@ -209,14 +209,15 @@ async def test_aprune_delegates_to_sync_method(
 
 
 @pytest.mark.asyncio
-async def test_async_methods_run_off_the_event_loop_thread(
+async def test_aget_tuple_runs_off_the_event_loop_thread(
     saver: OceanBaseCheckpointSaver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The sync work must run on an executor thread, not the loop thread.
 
     This is the only behavior the thread-pool wrappers add over a plain inline
-    call, so it is asserted explicitly.
+    call. All async methods share the same ``_run`` offload path, so asserting
+    it for one representative method covers the contract.
     """
     loop_thread_id = threading.get_ident()
     observed: dict[str, int] = {}
@@ -233,12 +234,47 @@ async def test_async_methods_run_off_the_event_loop_thread(
     assert observed["thread_id"] != loop_thread_id
 
 
+@pytest.mark.asyncio
+async def test_async_method_propagates_sync_exception(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exceptions raised in the sync method must surface through the executor.
+
+    All async methods share ``_run``; offloading to the executor must not
+    swallow or re-wrap the original exception.
+    """
+
+    def boom(_config: RunnableConfig) -> None:
+        raise ValueError("sync failure")
+
+    monkeypatch.setattr(saver, "get_tuple", boom)
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    with pytest.raises(ValueError, match="sync failure"):
+        await saver.aget_tuple(config)
+
+
+@pytest.mark.asyncio
+async def test_async_method_after_close_raises(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """Calling an async method after close() must raise, per the documented contract."""
+    saver.close()
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    with pytest.raises(RuntimeError):
+        await saver.aget_tuple(config)
+
+
 def test_close_shuts_down_executor_and_is_idempotent(
     saver: OceanBaseCheckpointSaver,
 ) -> None:
     """close() should shut the executor down and tolerate repeated calls."""
     saver.close()
-    assert saver._executor._shutdown is True
+    # Observable effect: the executor refuses new work after shutdown.
+    with pytest.raises(RuntimeError):
+        saver._executor.submit(lambda: None)
     # Second call must not raise.
     saver.close()
 
@@ -252,8 +288,9 @@ def test_context_manager_closes_executor(
     )
     with OceanBaseCheckpointSaver(connection_args={}) as saver:
         executor = saver._executor
-        assert executor._shutdown is False
-    assert executor._shutdown is True
+        assert executor.submit(lambda: None).result() is None
+    with pytest.raises(RuntimeError):
+        executor.submit(lambda: None)
 
 
 @pytest.mark.asyncio
@@ -266,5 +303,6 @@ async def test_async_context_manager_closes_executor(
     )
     async with OceanBaseCheckpointSaver(connection_args={}) as saver:
         executor = saver._executor
-        assert executor._shutdown is False
-    assert executor._shutdown is True
+        assert executor.submit(lambda: None).result() is None
+    with pytest.raises(RuntimeError):
+        executor.submit(lambda: None)
