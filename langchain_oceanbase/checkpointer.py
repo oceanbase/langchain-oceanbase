@@ -233,6 +233,35 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         self._kwargs = kwargs
         self._create_client(**kwargs)
 
+    def close(self) -> None:
+        """Shut down the thread pool executor backing the async methods.
+
+        Safe to call multiple times. After calling, the async methods can no
+        longer be used. Prefer using the saver as a (async) context manager so
+        this is invoked automatically.
+        """
+        self._executor.shutdown(wait=True)
+
+    def __enter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    async def __aenter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Best-effort cleanup so a saver that was neither closed nor used as a
+        # context manager does not leak its worker threads. Never wait or raise
+        # from a finalizer.
+        executor = getattr(self, "_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=False)
+
     def _create_client(self, **kwargs: Any) -> None:
         """Create and initialize the OceanBase vector client.
 
@@ -370,10 +399,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             self._ensure_required_indexes(conn)
             conn.commit()
 
+    async def _run(self, func: Any, /, *args: Any, **kwargs: Any) -> Any:
+        """Run a blocking callable on the executor without blocking the loop."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, partial(func, *args, **kwargs)
+        )
+
     async def asetup(self) -> None:
         """Async version of setup using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(self._executor, self.setup)
+        await self._run(self.setup)
 
     @staticmethod
     def _is_duplicate_index_error(exc: Exception) -> bool:
@@ -419,8 +454,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Async version of get_tuple using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self.get_tuple, config)
+        return await self._run(self.get_tuple, config)
 
     async def alist(
         self,
@@ -431,17 +465,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         limit: Optional[int] = None,
     ) -> AsyncIterator[CheckpointTuple]:
         """Async version of list using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        items = await loop.run_in_executor(
-            self._executor,
-            partial(
-                lambda *a, **kw: list(self.list(*a, **kw)),
-                config,
-                filter=filter,
-                before=before,
-                limit=limit,
-            ),
-        )
+
+        def _list_sync() -> list[CheckpointTuple]:
+            return list(self.list(config, filter=filter, before=before, limit=limit))
+
+        items = await self._run(_list_sync)
         for item in items:
             yield item
 
@@ -453,11 +481,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
         """Async version of put using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            self._executor,
-            partial(self.put, config, checkpoint, metadata, new_versions),
-        )
+        return await self._run(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -467,16 +491,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         task_path: str = "",
     ) -> None:
         """Async version of put_writes using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            self._executor,
-            partial(self.put_writes, config, writes, task_id, task_path),
-        )
+        await self._run(self.put_writes, config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
         """Async version of delete_thread using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(self._executor, self.delete_thread, thread_id)
+        await self._run(self.delete_thread, thread_id)
 
     async def aprune(
         self,
@@ -485,11 +504,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         strategy: str = "keep_latest",
     ) -> None:
         """Async version of prune using a thread pool executor."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            self._executor,
-            partial(self.prune, thread_ids, strategy=strategy),
-        )
+        await self._run(self.prune, thread_ids, strategy=strategy)
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
