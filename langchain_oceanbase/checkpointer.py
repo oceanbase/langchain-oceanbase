@@ -7,13 +7,16 @@ their state within and across multiple interactions.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import random
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from functools import partial
 from typing import Any, Dict, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
@@ -192,12 +195,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
     """
 
     lock: threading.Lock
+    _executor: ThreadPoolExecutor
 
     def __init__(
         self,
         connection_args: Optional[Dict[str, Any]] = None,
         *,
         serde: Optional[SerializerProtocol] = None,
+        max_workers: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the OceanBase checkpoint saver.
@@ -213,6 +218,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                   in-process SeekDB instead of a remote connection.
                   Requires ``pip install langchain-oceanbase[pyseekdb]``.
             serde: Optional serializer for encoding/decoding checkpoints.
+            max_workers: Maximum number of threads in the executor pool
+                for async operations. Defaults to None (uses Python's default).
             **kwargs: Additional arguments passed to ObVecClient.
         """
         super().__init__(serde=serde)
@@ -222,8 +229,38 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             else DEFAULT_OCEANBASE_CONNECTION
         )
         self.lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._kwargs = kwargs
         self._create_client(**kwargs)
+
+    def close(self) -> None:
+        """Shut down the thread pool executor backing the async methods.
+
+        Safe to call multiple times. After calling, the async methods can no
+        longer be used. Prefer using the saver as a (async) context manager so
+        this is invoked automatically.
+        """
+        self._executor.shutdown(wait=True)
+
+    def __enter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    async def __aenter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Best-effort cleanup so a saver that was neither closed nor used as a
+        # context manager does not leak its worker threads. Never wait or raise
+        # from a finalizer.
+        executor = getattr(self, "_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=False)
 
     def _create_client(self, **kwargs: Any) -> None:
         """Create and initialize the OceanBase vector client.
@@ -362,6 +399,17 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             self._ensure_required_indexes(conn)
             conn.commit()
 
+    async def _run(self, func: Any, /, *args: Any, **kwargs: Any) -> Any:
+        """Run a blocking callable on the executor without blocking the loop."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, partial(func, *args, **kwargs)
+        )
+
+    async def asetup(self) -> None:
+        """Async version of setup using a thread pool executor."""
+        await self._run(self.setup)
+
     @staticmethod
     def _is_duplicate_index_error(exc: Exception) -> bool:
         """Return True when an index DDL failed because the index already exists."""
@@ -405,8 +453,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     raise
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Async wrapper for get_tuple."""
-        return self.get_tuple(config)
+        """Async version of get_tuple using a thread pool executor."""
+        return await self._run(self.get_tuple, config)
 
     async def alist(
         self,
@@ -416,8 +464,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         before: Optional[RunnableConfig] = None,
         limit: Optional[int] = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        """Async wrapper for list."""
-        items = list(self.list(config, filter=filter, before=before, limit=limit))
+        """Async version of list using a thread pool executor."""
+
+        def _list_sync() -> list[CheckpointTuple]:
+            return list(self.list(config, filter=filter, before=before, limit=limit))
+
+        items = await self._run(_list_sync)
         for item in items:
             yield item
 
@@ -428,8 +480,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Async wrapper for put."""
-        return self.put(config, checkpoint, metadata, new_versions)
+        """Async version of put using a thread pool executor."""
+        return await self._run(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -438,12 +490,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        """Async wrapper for put_writes."""
-        self.put_writes(config, writes, task_id, task_path)
+        """Async version of put_writes using a thread pool executor."""
+        await self._run(self.put_writes, config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
-        """Async wrapper for delete_thread."""
-        self.delete_thread(thread_id)
+        """Async version of delete_thread using a thread pool executor."""
+        await self._run(self.delete_thread, thread_id)
 
     async def aprune(
         self,
@@ -451,8 +503,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Async wrapper for prune."""
-        self.prune(thread_ids, strategy=strategy)
+        """Async version of prune using a thread pool executor."""
+        await self._run(self.prune, thread_ids, strategy=strategy)
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.

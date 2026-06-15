@@ -1,7 +1,21 @@
-__pycache__
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 .mypy_cache
 .pytest_cache
 .ruff_cache
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
 
 # Coverage
 .coverage
@@ -16,3 +30,9 @@ coverage.xml
 .cursor/
 .idea/
 .worktrees/
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db

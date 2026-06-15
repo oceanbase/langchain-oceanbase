@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 
@@ -5,10 +6,15 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from langchain_oceanbase.checkpoint import OceanBaseSaver
-from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
-# Define connection args (should match your environment)
-CONNECTION_ARGS = DEFAULT_OCEANBASE_CONNECTION
+# Define connection args from environment (falls back to defaults)
+CONNECTION_ARGS = {
+    "host": os.getenv("OB_HOST", "127.0.0.1"),
+    "port": os.getenv("OB_PORT", "2881"),
+    "user": os.getenv("OB_USER", "root@test"),
+    "password": os.getenv("OB_PASSWORD", ""),
+    "db_name": os.getenv("OB_DB", "test"),
+}
 
 
 @pytest.fixture
