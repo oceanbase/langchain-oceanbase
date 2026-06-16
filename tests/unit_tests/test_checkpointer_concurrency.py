@@ -1,8 +1,8 @@
 """Unit tests for OceanBaseCheckpointSaver concurrency behavior.
 
-Covers the conditional global lock: embedded SeekDB (NullPool over a
-non-thread-safe process singleton) must serialize access, while pooled remote
-backends must not.
+Covers the conditional global lock: embedded SeekDB (selected by ``path`` /
+``pyseekdb_client``, and running over a non-thread-safe process singleton) must
+serialize access, while pooled remote backends must not.
 """
 
 from __future__ import annotations
@@ -16,32 +16,66 @@ from sqlalchemy.pool import NullPool, QueuePool
 from langchain_oceanbase.checkpointer import OceanBaseCheckpointSaver
 
 
-def _make_saver(monkeypatch: pytest.MonkeyPatch, pool: Any) -> OceanBaseCheckpointSaver:
+def _make_saver(
+    monkeypatch: pytest.MonkeyPatch,
+    pool: Any,
+    connection_args: dict[str, Any] | None = None,
+) -> OceanBaseCheckpointSaver:
     """Build a saver whose obvector.engine.pool is the given object."""
 
     def fake_create_client(self: OceanBaseCheckpointSaver, **_: Any) -> None:
         self.obvector = SimpleNamespace(engine=SimpleNamespace(pool=pool))
 
     monkeypatch.setattr(OceanBaseCheckpointSaver, "_create_client", fake_create_client)
-    return OceanBaseCheckpointSaver(connection_args={})
+    return OceanBaseCheckpointSaver(connection_args=connection_args or {})
 
 
-def test_embedded_nullpool_serializes_access(
+def test_embedded_path_serializes_regardless_of_pool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A NullPool engine (embedded SeekDB) must serialize via the lock."""
-    pool = NullPool.__new__(NullPool)  # avoid constructing a real pool
-    saver = _make_saver(monkeypatch, pool)
+    """``path`` is the authoritative embedded signal, even with a pooled engine.
+
+    This guards against pyobvector changing the embedded engine's pool class:
+    detection must not rely on ``NullPool`` alone.
+    """
+    saver = _make_saver(
+        monkeypatch,
+        QueuePool.__new__(QueuePool),  # not a NullPool — yet still embedded
+        connection_args={"path": "/tmp/seekdb", "db_name": "test"},
+    )
     assert saver._serialize_access is True
 
 
-def test_pooled_remote_does_not_serialize_access(
+def test_embedded_pyseekdb_client_serializes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A pooled (non-NullPool) remote engine must not serialize."""
-    pool = QueuePool.__new__(QueuePool)
-    saver = _make_saver(monkeypatch, pool)
+    """An externally supplied ``pyseekdb_client`` is also embedded → serialize."""
+    saver = _make_saver(
+        monkeypatch,
+        QueuePool.__new__(QueuePool),
+        connection_args={"pyseekdb_client": object()},
+    )
+    assert saver._serialize_access is True
+
+
+def test_remote_pooled_does_not_serialize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A remote config (no path) with a real pool must not serialize."""
+    saver = _make_saver(
+        monkeypatch,
+        QueuePool.__new__(QueuePool),
+        connection_args={"host": "127.0.0.1", "port": "2881"},
+    )
     assert saver._serialize_access is False
+
+
+def test_nullpool_backstop_serializes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A NullPool engine serializes even without a path (defensive backstop)."""
+    saver = _make_saver(monkeypatch, NullPool.__new__(NullPool))
+    assert saver._serialize_access is True
 
 
 def test_unknown_pool_defaults_to_serialized(
@@ -86,8 +120,12 @@ def test_cursor_acquires_lock_only_when_serializing(
             engine=SimpleNamespace(connect=lambda: FakeConn())
         )
 
-    # Embedded: lock is acquired.
-    embedded = _make_saver(monkeypatch, NullPool.__new__(NullPool))
+    # Embedded (path): lock is acquired.
+    embedded = _make_saver(
+        monkeypatch,
+        QueuePool.__new__(QueuePool),
+        connection_args={"path": "/tmp/seekdb"},
+    )
     install_engine(embedded)
     lock = TrackingLock()
     embedded.lock = lock  # type: ignore[assignment]
@@ -96,7 +134,11 @@ def test_cursor_acquires_lock_only_when_serializing(
     assert lock.entered == 1
 
     # Remote: lock is never acquired.
-    remote = _make_saver(monkeypatch, QueuePool.__new__(QueuePool))
+    remote = _make_saver(
+        monkeypatch,
+        QueuePool.__new__(QueuePool),
+        connection_args={"host": "127.0.0.1"},
+    )
     install_engine(remote)
     lock2 = TrackingLock()
     remote.lock = lock2  # type: ignore[assignment]

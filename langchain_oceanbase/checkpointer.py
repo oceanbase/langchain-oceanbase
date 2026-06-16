@@ -235,15 +235,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         self._kwargs = kwargs
         self._create_client(**kwargs)
 
-        # Embedded SeekDB uses a NullPool over a non-thread-safe process-wide
-        # singleton, so its connections must be serialized via self.lock. Remote
-        # OceanBase/MySQL engines use SQLAlchemy's thread-safe pool and need no
-        # global lock — serializing them would needlessly bottleneck concurrency.
-        # Default to serializing when the pool can't be determined (safer).
-        obvector = getattr(self, "obvector", None)
-        engine = getattr(obvector, "engine", None)
-        pool = getattr(engine, "pool", None)
-        self._serialize_access = pool is None or isinstance(pool, NullPool)
+        # Embedded SeekDB runs against a non-thread-safe, process-wide singleton
+        # and must serialize all access via self.lock. Remote OceanBase/MySQL use
+        # SQLAlchemy's thread-safe pool and need no global lock — serializing them
+        # would needlessly bottleneck concurrency. Decide on the same authoritative
+        # signal _create_client uses to pick the backend (``path`` /
+        # ``pyseekdb_client``), and additionally serialize if the engine turned out
+        # to use a NullPool (covers an externally supplied embedded engine).
+        self._serialize_access = self._requires_serialized_access()
 
     def close(self) -> None:
         """Shut down the thread pool executor backing the async methods.
@@ -320,6 +319,25 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             # Re-raise other exceptions as-is
             logger.error(f"Failed to create OceanBase client: {e}")
             raise
+
+    def _requires_serialized_access(self) -> bool:
+        """Return True when DB access must be serialized through ``self.lock``.
+
+        Embedded SeekDB (selected by ``path`` / ``pyseekdb_client``) wraps a
+        non-thread-safe, process-wide singleton, so its connections must run one
+        at a time. Remote OceanBase/MySQL use a thread-safe connection pool and
+        need no global lock. As a defensive backstop, also serialize when the
+        engine ended up using a ``NullPool`` (e.g. an externally supplied
+        embedded engine) or when the pool cannot be determined.
+        """
+        if (
+            self.connection_args.get("path") is not None
+            or self.connection_args.get("pyseekdb_client") is not None
+        ):
+            return True
+        pool = getattr(getattr(self, "obvector", None), "engine", None)
+        pool = getattr(pool, "pool", None)
+        return pool is None or isinstance(pool, NullPool)
 
     @contextmanager
     def _cursor(self) -> Iterator[Connection]:
@@ -800,6 +818,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         based on the provided config. The checkpoints are ordered by checkpoint ID
         in descending order (newest first).
 
+        All matching tuples are loaded eagerly (so the database connection — and,
+        for embedded backends, the global lock — is released before iteration),
+        so peak memory scales with the result size. Pass ``limit`` when listing
+        long-lived threads.
+
         Args:
             config: The config to use for listing the checkpoints.
             filter: Additional filtering criteria for metadata.
@@ -1136,6 +1159,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         on the target are left untouched (``INSERT IGNORE``), so a repeated copy
         is idempotent.
 
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the source thread. Run it when the source thread
+            is not being actively written (the standard single-writer-per-thread
+            assumption), as with the other SQL-backed LangGraph savers.
+
         Args:
             source_thread_id: The thread ID to copy from.
             target_thread_id: The thread ID to copy to.
@@ -1206,6 +1236,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         they are not removed here; reclaim them with :meth:`prune` or
         :meth:`delete_thread`.
 
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the affected threads. Run it when those threads
+            are not being actively written (the standard single-writer-per-thread
+            assumption).
+
         Args:
             run_ids: The run IDs whose checkpoints should be deleted.
 
@@ -1273,7 +1310,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Prune checkpoints for the given threads."""
+        """Prune checkpoints for the given threads.
+
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so its read-then-delete steps
+            are not isolated against concurrent writes to the same threads. Run it
+            when those threads are not being actively written (the standard
+            single-writer-per-thread assumption); otherwise a checkpoint or blob
+            committed mid-prune may be removed.
+        """
         if not thread_ids:
             return
 
