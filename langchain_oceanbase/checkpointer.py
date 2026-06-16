@@ -15,7 +15,7 @@ import random
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Any, Dict, Optional, cast
 
@@ -35,6 +35,7 @@ from pyobvector import ObVecClient  # type: ignore[import-untyped]
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import ResourceClosedError
+from sqlalchemy.pool import NullPool
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
@@ -196,6 +197,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
     lock: threading.Lock
     _executor: ThreadPoolExecutor
+    _serialize_access: bool
 
     def __init__(
         self,
@@ -232,6 +234,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._kwargs = kwargs
         self._create_client(**kwargs)
+
+        # Embedded SeekDB uses a NullPool over a non-thread-safe process-wide
+        # singleton, so its connections must be serialized via self.lock. Remote
+        # OceanBase/MySQL engines use SQLAlchemy's thread-safe pool and need no
+        # global lock — serializing them would needlessly bottleneck concurrency.
+        # Default to serializing when the pool can't be determined (safer).
+        obvector = getattr(self, "obvector", None)
+        engine = getattr(obvector, "engine", None)
+        pool = getattr(engine, "pool", None)
+        self._serialize_access = pool is None or isinstance(pool, NullPool)
 
     def close(self) -> None:
         """Shut down the thread pool executor backing the async methods.
@@ -313,10 +325,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
     def _cursor(self) -> Iterator[Connection]:
         """Create a database connection as a context manager.
 
+        Acquires the global lock only for backends that require serialized
+        access (embedded SeekDB); pooled remote backends run concurrently.
+
         Yields:
             A SQLAlchemy connection object for executing SQL statements.
         """
-        with self.lock:
+        lock_cm = self.lock if self._serialize_access else nullcontext()
+        with lock_cm:
             with self.obvector.engine.connect() as conn:
                 yield conn
 
@@ -616,32 +632,38 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if not channel_versions:
             return {}
 
+        # Batch all channel/version lookups into a single query (avoids an N+1
+        # round-trip per channel). Match the same OR-of-pairs binding pattern
+        # used by prune/delete_for_runs for cross-backend portability.
+        params: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+        }
+        conditions = []
+        for idx, (channel, version) in enumerate(channel_versions.items()):
+            params[f"channel_{idx}"] = channel
+            params[f"version_{idx}"] = str(version)
+            conditions.append(
+                f"(channel = :channel_{idx} AND version = :version_{idx})"
+            )
+
+        query = text(
+            "SELECT channel, `type`, `blob` FROM checkpoint_blobs "
+            "WHERE thread_id = :thread_id "
+            "AND checkpoint_ns = :checkpoint_ns "
+            f"AND ({' OR '.join(conditions)})"
+        )
+        result = conn.execute(query, params)
+
         channel_values = {}
-        for channel, version in channel_versions.items():
-            query = text(
-                "SELECT `type`, `blob` FROM checkpoint_blobs "
-                "WHERE thread_id = :thread_id "
-                "AND checkpoint_ns = :checkpoint_ns "
-                "AND channel = :channel "
-                "AND version = :version"
-            )
-            result = conn.execute(
-                query,
-                {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "channel": channel,
-                    "version": str(version),
-                },
-            )
-            row = self._result_fetchone_or_none(result)
-            if row and row[0] != "empty":
-                type_str, blob = row[0], row[1]
-                decoded_blob = self._decode_storage_blob(blob)
-                if decoded_blob is not None:
-                    channel_values[channel] = self.serde.loads_typed(
-                        (type_str, decoded_blob)
-                    )
+        for channel, type_str, blob in self._result_fetchall(result):
+            if type_str == "empty":
+                continue
+            decoded_blob = self._decode_storage_blob(blob)
+            if decoded_blob is not None:
+                channel_values[channel] = self.serde.loads_typed(
+                    (type_str, decoded_blob)
+                )
 
         return channel_values
 
@@ -801,6 +823,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if limit is not None:
             query += f" LIMIT {int(limit)}"
 
+        # Materialize all tuples while holding the connection (and, for embedded
+        # backends, the lock), then yield outside the cursor block so a slow
+        # consumer cannot hold the connection/lock open across iterations.
+        items: list[CheckpointTuple] = []
         with self._cursor() as conn:
             result = conn.execute(text(query), params)
             rows = self._result_fetchall(result)
@@ -818,7 +844,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     conn, thread_id, checkpoint_ns, checkpoint_id
                 )
 
-                yield self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                items.append(
+                    self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                )
+
+        yield from items
 
     def _build_where_clause(
         self,
