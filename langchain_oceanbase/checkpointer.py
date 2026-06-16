@@ -1214,6 +1214,9 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             if not matched:
                 return
 
+            # Cascade off the matched keys with an OR-of-tuples predicate. A
+            # run_id maps to only a handful of checkpoints (roughly one per
+            # namespace), so this stays small; batch it if that ever changes.
             key_params: Dict[str, Any] = {}
             conditions = []
             for idx, (thread_id, checkpoint_ns, checkpoint_id) in enumerate(matched):
