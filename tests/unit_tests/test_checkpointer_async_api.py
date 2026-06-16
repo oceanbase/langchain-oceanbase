@@ -209,6 +209,43 @@ async def test_aprune_delegates_to_sync_method(
 
 
 @pytest.mark.asyncio
+async def test_acopy_thread_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """acopy_thread should delegate to copy_thread."""
+    copy_thread = MagicMock()
+    monkeypatch.setattr(saver, "copy_thread", copy_thread)
+
+    await saver.acopy_thread("source-thread", "target-thread")
+
+    copy_thread.assert_called_once_with("source-thread", "target-thread")
+
+
+@pytest.mark.asyncio
+async def test_adelete_for_runs_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """adelete_for_runs should delegate to delete_for_runs."""
+    delete_for_runs = MagicMock()
+    monkeypatch.setattr(saver, "delete_for_runs", delete_for_runs)
+
+    await saver.adelete_for_runs(["run-1", "run-2"])
+
+    delete_for_runs.assert_called_once_with(["run-1", "run-2"])
+
+
+def test_detected_capabilities_include_copy_thread_and_delete_for_runs(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """The saver should advertise the extended copy_thread/delete_for_runs caps."""
+    detected = {cap.value for cap in DetectedCapabilities.from_instance(saver).detected}
+    assert "copy_thread" in detected
+    assert "delete_for_runs" in detected
+
+
+@pytest.mark.asyncio
 async def test_aget_tuple_runs_off_the_event_loop_thread(
     saver: OceanBaseCheckpointSaver,
     monkeypatch: pytest.MonkeyPatch,
