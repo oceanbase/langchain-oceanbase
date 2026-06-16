@@ -73,7 +73,12 @@ def test_remote_pooled_does_not_serialize(
 def test_nullpool_backstop_serializes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A NullPool engine serializes even without a path (defensive backstop)."""
+    """A NullPool engine serializes even without a path (defensive backstop).
+
+    This is the load-bearing path for an embedded client/engine supplied via
+    ``**kwargs`` (e.g. ``pyseekdb_client=`` / ``engine=``), which pyobvector
+    routes to a NullPool engine but which never appears in ``connection_args``.
+    """
     saver = _make_saver(monkeypatch, NullPool.__new__(NullPool))
     assert saver._serialize_access is True
 

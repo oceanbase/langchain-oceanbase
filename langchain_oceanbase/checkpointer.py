@@ -238,10 +238,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         # Embedded SeekDB runs against a non-thread-safe, process-wide singleton
         # and must serialize all access via self.lock. Remote OceanBase/MySQL use
         # SQLAlchemy's thread-safe pool and need no global lock — serializing them
-        # would needlessly bottleneck concurrency. Decide on the same authoritative
-        # signal _create_client uses to pick the backend (``path`` /
-        # ``pyseekdb_client``), and additionally serialize if the engine turned out
-        # to use a NullPool (covers an externally supplied embedded engine).
+        # would needlessly bottleneck concurrency. Detect embedded via the
+        # connection_args signal plus a NullPool backstop (see the helper).
         self._serialize_access = self._requires_serialized_access()
 
     def close(self) -> None:
@@ -323,12 +321,15 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
     def _requires_serialized_access(self) -> bool:
         """Return True when DB access must be serialized through ``self.lock``.
 
-        Embedded SeekDB (selected by ``path`` / ``pyseekdb_client``) wraps a
-        non-thread-safe, process-wide singleton, so its connections must run one
-        at a time. Remote OceanBase/MySQL use a thread-safe connection pool and
-        need no global lock. As a defensive backstop, also serialize when the
-        engine ended up using a ``NullPool`` (e.g. an externally supplied
-        embedded engine) or when the pool cannot be determined.
+        Embedded SeekDB wraps a non-thread-safe, process-wide singleton, so its
+        connections must run one at a time; remote OceanBase/MySQL use a
+        thread-safe connection pool and need no global lock. Embedded is detected
+        two ways: an explicit ``path`` / ``pyseekdb_client`` in ``connection_args``
+        (``path`` is what :meth:`_create_client` branches on), and — as the
+        load-bearing backstop for embedded clients/engines supplied via
+        ``**kwargs`` (which never appear in ``connection_args``) — a ``NullPool``
+        engine, which is what pyobvector builds for every embedded backend. Also
+        serialize when the pool cannot be determined.
         """
         if (
             self.connection_args.get("path") is not None
