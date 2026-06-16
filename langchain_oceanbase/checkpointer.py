@@ -15,7 +15,7 @@ import random
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Any, Dict, Optional, cast
 
@@ -35,6 +35,7 @@ from pyobvector import ObVecClient  # type: ignore[import-untyped]
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import ResourceClosedError
+from sqlalchemy.pool import NullPool
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
@@ -196,6 +197,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
     lock: threading.Lock
     _executor: ThreadPoolExecutor
+    _serialize_access: bool
 
     def __init__(
         self,
@@ -232,6 +234,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._kwargs = kwargs
         self._create_client(**kwargs)
+
+        # Embedded SeekDB runs against a non-thread-safe, process-wide singleton
+        # and must serialize all access via self.lock. Remote OceanBase/MySQL use
+        # SQLAlchemy's thread-safe pool and need no global lock — serializing them
+        # would needlessly bottleneck concurrency. Detect embedded via the
+        # connection_args signal plus a NullPool backstop (see the helper).
+        self._serialize_access = self._requires_serialized_access()
 
     def close(self) -> None:
         """Shut down the thread pool executor backing the async methods.
@@ -309,14 +318,40 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             logger.error(f"Failed to create OceanBase client: {e}")
             raise
 
+    def _requires_serialized_access(self) -> bool:
+        """Return True when DB access must be serialized through ``self.lock``.
+
+        Embedded SeekDB wraps a non-thread-safe, process-wide singleton, so its
+        connections must run one at a time; remote OceanBase/MySQL use a
+        thread-safe connection pool and need no global lock. Embedded is detected
+        two ways: an explicit ``path`` / ``pyseekdb_client`` in ``connection_args``
+        (``path`` is what :meth:`_create_client` branches on), and — as the
+        load-bearing backstop for embedded clients/engines supplied via
+        ``**kwargs`` (which never appear in ``connection_args``) — a ``NullPool``
+        engine, which is what pyobvector builds for every embedded backend. Also
+        serialize when the pool cannot be determined.
+        """
+        if (
+            self.connection_args.get("path") is not None
+            or self.connection_args.get("pyseekdb_client") is not None
+        ):
+            return True
+        pool = getattr(getattr(self, "obvector", None), "engine", None)
+        pool = getattr(pool, "pool", None)
+        return pool is None or isinstance(pool, NullPool)
+
     @contextmanager
     def _cursor(self) -> Iterator[Connection]:
         """Create a database connection as a context manager.
 
+        Acquires the global lock only for backends that require serialized
+        access (embedded SeekDB); pooled remote backends run concurrently.
+
         Yields:
             A SQLAlchemy connection object for executing SQL statements.
         """
-        with self.lock:
+        lock_cm = self.lock if self._serialize_access else nullcontext()
+        with lock_cm:
             with self.obvector.engine.connect() as conn:
                 yield conn
 
@@ -616,32 +651,38 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if not channel_versions:
             return {}
 
+        # Batch all channel/version lookups into a single query (avoids an N+1
+        # round-trip per channel). Match the same OR-of-pairs binding pattern
+        # used by prune/delete_for_runs for cross-backend portability.
+        params: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+        }
+        conditions = []
+        for idx, (channel, version) in enumerate(channel_versions.items()):
+            params[f"channel_{idx}"] = channel
+            params[f"version_{idx}"] = str(version)
+            conditions.append(
+                f"(channel = :channel_{idx} AND version = :version_{idx})"
+            )
+
+        query = text(
+            "SELECT channel, `type`, `blob` FROM checkpoint_blobs "
+            "WHERE thread_id = :thread_id "
+            "AND checkpoint_ns = :checkpoint_ns "
+            f"AND ({' OR '.join(conditions)})"
+        )
+        result = conn.execute(query, params)
+
         channel_values = {}
-        for channel, version in channel_versions.items():
-            query = text(
-                "SELECT `type`, `blob` FROM checkpoint_blobs "
-                "WHERE thread_id = :thread_id "
-                "AND checkpoint_ns = :checkpoint_ns "
-                "AND channel = :channel "
-                "AND version = :version"
-            )
-            result = conn.execute(
-                query,
-                {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "channel": channel,
-                    "version": str(version),
-                },
-            )
-            row = self._result_fetchone_or_none(result)
-            if row and row[0] != "empty":
-                type_str, blob = row[0], row[1]
-                decoded_blob = self._decode_storage_blob(blob)
-                if decoded_blob is not None:
-                    channel_values[channel] = self.serde.loads_typed(
-                        (type_str, decoded_blob)
-                    )
+        for channel, type_str, blob in self._result_fetchall(result):
+            if type_str == "empty":
+                continue
+            decoded_blob = self._decode_storage_blob(blob)
+            if decoded_blob is not None:
+                channel_values[channel] = self.serde.loads_typed(
+                    (type_str, decoded_blob)
+                )
 
         return channel_values
 
@@ -778,6 +819,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         based on the provided config. The checkpoints are ordered by checkpoint ID
         in descending order (newest first).
 
+        All matching tuples are loaded eagerly (so the database connection — and,
+        for embedded backends, the global lock — is released before iteration),
+        so peak memory scales with the result size. Pass ``limit`` when listing
+        long-lived threads.
+
         Args:
             config: The config to use for listing the checkpoints.
             filter: Additional filtering criteria for metadata.
@@ -801,6 +847,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if limit is not None:
             query += f" LIMIT {int(limit)}"
 
+        # Materialize all tuples while holding the connection (and, for embedded
+        # backends, the lock), then yield outside the cursor block so a slow
+        # consumer cannot hold the connection/lock open across iterations.
+        items: list[CheckpointTuple] = []
         with self._cursor() as conn:
             result = conn.execute(text(query), params)
             rows = self._result_fetchall(result)
@@ -818,7 +868,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     conn, thread_id, checkpoint_ns, checkpoint_id
                 )
 
-                yield self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                items.append(
+                    self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                )
+
+        yield from items
 
     def _build_where_clause(
         self,
@@ -1106,6 +1160,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         on the target are left untouched (``INSERT IGNORE``), so a repeated copy
         is idempotent.
 
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the source thread. Run it when the source thread
+            is not being actively written (the standard single-writer-per-thread
+            assumption), as with the other SQL-backed LangGraph savers.
+
         Args:
             source_thread_id: The thread ID to copy from.
             target_thread_id: The thread ID to copy to.
@@ -1176,6 +1237,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         they are not removed here; reclaim them with :meth:`prune` or
         :meth:`delete_thread`.
 
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the affected threads. Run it when those threads
+            are not being actively written (the standard single-writer-per-thread
+            assumption).
+
         Args:
             run_ids: The run IDs whose checkpoints should be deleted.
 
@@ -1243,7 +1311,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Prune checkpoints for the given threads."""
+        """Prune checkpoints for the given threads.
+
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so its read-then-delete steps
+            are not isolated against concurrent writes to the same threads. Run it
+            when those threads are not being actively written (the standard
+            single-writer-per-thread assumption); otherwise a checkpoint or blob
+            committed mid-prune may be removed.
+        """
         if not thread_ids:
             return
 
