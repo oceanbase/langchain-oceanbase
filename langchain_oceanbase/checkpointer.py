@@ -506,6 +506,14 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         """Async version of prune using a thread pool executor."""
         await self._run(self.prune, thread_ids, strategy=strategy)
 
+    async def acopy_thread(self, source_thread_id: str, target_thread_id: str) -> None:
+        """Async version of copy_thread using a thread pool executor."""
+        await self._run(self.copy_thread, source_thread_id, target_thread_id)
+
+    async def adelete_for_runs(self, run_ids: Sequence[str]) -> None:
+        """Async version of delete_for_runs using a thread pool executor."""
+        await self._run(self.delete_for_runs, run_ids)
+
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
 
@@ -1086,6 +1094,147 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 text("DELETE FROM checkpoint_writes WHERE thread_id = :thread_id"),
                 {"thread_id": thread_id},
             )
+            conn.commit()
+
+    def copy_thread(self, source_thread_id: str, target_thread_id: str) -> None:
+        """Copy all checkpoints and writes from one thread to another.
+
+        Copies the complete parent chain (every ancestor checkpoint and its
+        blobs and writes), preserving namespaces, ordering, metadata, channel
+        values and pending writes. Only ``thread_id`` is rewritten. If the
+        source thread has no checkpoints this is a no-op. Rows already present
+        on the target are left untouched (``INSERT IGNORE``), so a repeated copy
+        is idempotent.
+
+        Args:
+            source_thread_id: The thread ID to copy from.
+            target_thread_id: The thread ID to copy to.
+
+        Example:
+            .. code-block:: python
+
+                checkpointer.copy_thread("thread-a", "thread-b")
+        """
+        params = {
+            "source_thread_id": source_thread_id,
+            "target_thread_id": target_thread_id,
+        }
+        with self._cursor() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoints
+                    (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id,
+                     `type`, checkpoint, metadata)
+                    SELECT :target_thread_id, checkpoint_ns, checkpoint_id,
+                           parent_checkpoint_id, `type`, checkpoint, metadata
+                    FROM checkpoints
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoint_blobs
+                    (thread_id, checkpoint_ns, channel, version, `type`, `blob`)
+                    SELECT :target_thread_id, checkpoint_ns, channel, version,
+                           `type`, `blob`
+                    FROM checkpoint_blobs
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoint_writes
+                    (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path,
+                     idx, channel, `type`, `blob`)
+                    SELECT :target_thread_id, checkpoint_ns, checkpoint_id, task_id,
+                           task_path, idx, channel, `type`, `blob`
+                    FROM checkpoint_writes
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.commit()
+
+    def delete_for_runs(self, run_ids: Sequence[str]) -> None:
+        """Delete all checkpoints and writes associated with the given run IDs.
+
+        ``run_id`` is stored inside each checkpoint's ``metadata`` JSON (it flows
+        from ``config["metadata"]["run_id"]``). Checkpoints whose metadata
+        ``run_id`` matches are deleted together with their pending writes,
+        across all namespaces. An empty list or unknown run IDs are a no-op.
+
+        Channel blobs are content-addressed by ``(thread_id, checkpoint_ns,
+        channel, version)`` and shared across the checkpoints of a thread, so
+        they are not removed here; reclaim them with :meth:`prune` or
+        :meth:`delete_thread`.
+
+        Args:
+            run_ids: The run IDs whose checkpoints should be deleted.
+
+        Example:
+            .. code-block:: python
+
+                checkpointer.delete_for_runs(["run-1", "run-2"])
+        """
+        if not run_ids:
+            return
+
+        with self._cursor() as conn:
+            params: Dict[str, Any] = {}
+            placeholders = []
+            for idx, run_id in enumerate(run_ids):
+                key = f"run_id_{idx}"
+                params[key] = run_id
+                placeholders.append(f":{key}")
+            run_id_filter = ", ".join(placeholders)
+
+            # blobs/writes carry no run_id, so identify the checkpoints produced
+            # by these runs once and cascade deletes off the matched keys.
+            matched = self._result_fetchall(
+                conn.execute(
+                    text(
+                        f"""
+                        SELECT thread_id, checkpoint_ns, checkpoint_id
+                        FROM checkpoints
+                        WHERE JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.run_id'))
+                              IN ({run_id_filter})
+                        """
+                    ),
+                    params,
+                )
+            )
+            if not matched:
+                return
+
+            # Cascade off the matched keys with an OR-of-tuples predicate. A
+            # run_id maps to only a handful of checkpoints (roughly one per
+            # namespace), so this stays small; batch it if that ever changes.
+            key_params: Dict[str, Any] = {}
+            conditions = []
+            for idx, (thread_id, checkpoint_ns, checkpoint_id) in enumerate(matched):
+                key_params[f"thread_id_{idx}"] = thread_id
+                key_params[f"checkpoint_ns_{idx}"] = checkpoint_ns
+                key_params[f"checkpoint_id_{idx}"] = checkpoint_id
+                conditions.append(
+                    f"(thread_id = :thread_id_{idx} "
+                    f"AND checkpoint_ns = :checkpoint_ns_{idx} "
+                    f"AND checkpoint_id = :checkpoint_id_{idx})"
+                )
+            where_clause = " OR ".join(conditions)
+
+            for table in ("checkpoint_writes", "checkpoints"):
+                conn.execute(
+                    text(f"DELETE FROM {table} WHERE {where_clause}"),
+                    key_params,
+                )
             conn.commit()
 
     def prune(
