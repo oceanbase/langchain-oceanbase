@@ -506,9 +506,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         """Async version of prune using a thread pool executor."""
         await self._run(self.prune, thread_ids, strategy=strategy)
 
-    async def acopy_thread(
-        self, source_thread_id: str, target_thread_id: str
-    ) -> None:
+    async def acopy_thread(self, source_thread_id: str, target_thread_id: str) -> None:
         """Async version of copy_thread using a thread pool executor."""
         await self._run(self.copy_thread, source_thread_id, target_thread_id)
 
@@ -1104,7 +1102,9 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         Copies the complete parent chain (every ancestor checkpoint and its
         blobs and writes), preserving namespaces, ordering, metadata, channel
         values and pending writes. Only ``thread_id`` is rewritten. If the
-        source thread has no checkpoints this is a no-op.
+        source thread has no checkpoints this is a no-op. Rows already present
+        on the target are left untouched (``INSERT IGNORE``), so a repeated copy
+        is idempotent.
 
         Args:
             source_thread_id: The thread ID to copy from.
@@ -1115,11 +1115,15 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
                 checkpointer.copy_thread("thread-a", "thread-b")
         """
+        params = {
+            "source_thread_id": source_thread_id,
+            "target_thread_id": target_thread_id,
+        }
         with self._cursor() as conn:
             conn.execute(
                 text(
                     """
-                    INSERT INTO checkpoints
+                    INSERT IGNORE INTO checkpoints
                     (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id,
                      `type`, checkpoint, metadata)
                     SELECT :target_thread_id, checkpoint_ns, checkpoint_id,
@@ -1128,15 +1132,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     WHERE thread_id = :source_thread_id
                     """
                 ),
-                {
-                    "source_thread_id": source_thread_id,
-                    "target_thread_id": target_thread_id,
-                },
+                params,
             )
             conn.execute(
                 text(
                     """
-                    INSERT INTO checkpoint_blobs
+                    INSERT IGNORE INTO checkpoint_blobs
                     (thread_id, checkpoint_ns, channel, version, `type`, `blob`)
                     SELECT :target_thread_id, checkpoint_ns, channel, version,
                            `type`, `blob`
@@ -1144,15 +1145,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     WHERE thread_id = :source_thread_id
                     """
                 ),
-                {
-                    "source_thread_id": source_thread_id,
-                    "target_thread_id": target_thread_id,
-                },
+                params,
             )
             conn.execute(
                 text(
                     """
-                    INSERT INTO checkpoint_writes
+                    INSERT IGNORE INTO checkpoint_writes
                     (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path,
                      idx, channel, `type`, `blob`)
                     SELECT :target_thread_id, checkpoint_ns, checkpoint_id, task_id,
@@ -1161,10 +1159,7 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     WHERE thread_id = :source_thread_id
                     """
                 ),
-                {
-                    "source_thread_id": source_thread_id,
-                    "target_thread_id": target_thread_id,
-                },
+                params,
             )
             conn.commit()
 
@@ -1173,9 +1168,13 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
 
         ``run_id`` is stored inside each checkpoint's ``metadata`` JSON (it flows
         from ``config["metadata"]["run_id"]``). Checkpoints whose metadata
-        ``run_id`` matches are deleted together with their pending writes and
-        channel blobs, across all namespaces. An empty list or unknown run IDs
-        are a no-op.
+        ``run_id`` matches are deleted together with their pending writes,
+        across all namespaces. An empty list or unknown run IDs are a no-op.
+
+        Channel blobs are content-addressed by ``(thread_id, checkpoint_ns,
+        channel, version)`` and shared across the checkpoints of a thread, so
+        they are not removed here; reclaim them with :meth:`prune` or
+        :meth:`delete_thread`.
 
         Args:
             run_ids: The run IDs whose checkpoints should be deleted.
@@ -1197,8 +1196,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                 placeholders.append(f":{key}")
             run_id_filter = ", ".join(placeholders)
 
-            # Identify the checkpoints produced by these runs. blobs/writes carry
-            # no run_id, so cascade deletes key off the matched checkpoint rows.
+            # blobs/writes carry no run_id, so identify the checkpoints produced
+            # by these runs once and cascade deletes off the matched keys.
             matched = self._result_fetchall(
                 conn.execute(
                     text(
@@ -1215,32 +1214,22 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             if not matched:
                 return
 
-            for thread_id, checkpoint_ns, checkpoint_id in matched:
-                key_params = {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id,
-                }
-                conn.execute(
-                    text(
-                        """
-                        DELETE FROM checkpoints
-                        WHERE thread_id = :thread_id
-                          AND checkpoint_ns = :checkpoint_ns
-                          AND checkpoint_id = :checkpoint_id
-                        """
-                    ),
-                    key_params,
+            key_params: Dict[str, Any] = {}
+            conditions = []
+            for idx, (thread_id, checkpoint_ns, checkpoint_id) in enumerate(matched):
+                key_params[f"thread_id_{idx}"] = thread_id
+                key_params[f"checkpoint_ns_{idx}"] = checkpoint_ns
+                key_params[f"checkpoint_id_{idx}"] = checkpoint_id
+                conditions.append(
+                    f"(thread_id = :thread_id_{idx} "
+                    f"AND checkpoint_ns = :checkpoint_ns_{idx} "
+                    f"AND checkpoint_id = :checkpoint_id_{idx})"
                 )
+            where_clause = " OR ".join(conditions)
+
+            for table in ("checkpoint_writes", "checkpoints"):
                 conn.execute(
-                    text(
-                        """
-                        DELETE FROM checkpoint_writes
-                        WHERE thread_id = :thread_id
-                          AND checkpoint_ns = :checkpoint_ns
-                          AND checkpoint_id = :checkpoint_id
-                        """
-                    ),
+                    text(f"DELETE FROM {table} WHERE {where_clause}"),
                     key_params,
                 )
             conn.commit()
