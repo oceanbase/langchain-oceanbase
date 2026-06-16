@@ -87,8 +87,8 @@ pytest-cov = ">=4.1,<8.0"
 pytest-socket = ">=0.7,<0.9"
 pytest-watcher = ">=0.3.4,<0.7.0"
 langgraph-checkpoint-conformance = ">=0.0.2,<0.1.0"
-langchain-tests = "==0.3.22"
-langchain-community = "^0.3.12"
+langchain-tests = "==1.1.6"
+langchain-community = ">=0.3.12,<0.5.0"
 dashscope = "^1.20.14"
 
 [tool.poetry.group.codespell.dependencies]
