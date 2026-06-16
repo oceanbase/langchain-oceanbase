@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "langchain-oceanbase"
-version = "0.5.2"
+version = "0.6.0"
 description = "An integration package connecting OceanBase and LangChain"
 authors = ["shanhaikang.shk <shanhaikang.shk@oceanbase.com>"]
 readme = "README.md"
@@ -21,9 +21,16 @@ disallow_untyped_defs = "True"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-langchain-core = ">=0.3.0,<2.0.0"
-langgraph = ">=0.6.11,<2.0.0"
-langgraph-checkpoint = ">=3.0.1,<5.0.0"
+# Floors raised for 0.6.0: copy_thread/delete_for_runs/prune are langgraph-checkpoint
+# 4.x base capabilities (validated working on checkpoint 4.0.0), so the floor must
+# guarantee a 4.x-capable stack. langgraph 1.0.6 is the first release that *allows*
+# langgraph-checkpoint 4.x (earlier langgraph caps it <4.0.0), so a langgraph floor
+# raise is unavoidable; langchain-core >=1.0 keeps the "0.6.x = LangChain 1.x" story
+# while still admitting LangChain 1.0/1.1 users. CI tests both this floor and the
+# locked newest stack.
+langchain-core = ">=1.0.0,<2.0.0"
+langgraph = ">=1.0.6,<2.0.0"
+langgraph-checkpoint = ">=4.0.0,<5.0.0"
 # >=1.2: unified SeekDB client. Constrain pylibseekdb so the lock resolves to 1.1+ (manylinux + macOS arm64 wheels);
 # 1.0.0.post1 is Linux-wheel-only metadata and breaks Poetry on macOS arm64 / some CI installers.
 pyseekdb = { version = ">=1.2.0.post1,<3", optional = true }
