@@ -126,12 +126,16 @@ async def test_checkpoint_conformance_base() -> None:
             "list",
             "delete_thread",
             "prune",
+            "copy_thread",
+            "delete_for_runs",
         },
         progress=ProgressCallbacks.verbose(),
     )
     report.print_report()
     assert report.passed_all_base()
     assert report.results["prune"].passed is True
+    assert report.results["copy_thread"].passed is True
+    assert report.results["delete_for_runs"].passed is True
 
 
 @pytest.mark.asyncio
@@ -151,12 +155,16 @@ async def test_checkpoint_conformance_oceanbase_server() -> None:
             "list",
             "delete_thread",
             "prune",
+            "copy_thread",
+            "delete_for_runs",
         },
         progress=ProgressCallbacks.verbose(),
     )
     report.print_report()
     assert report.passed_all_base()
     assert report.results["prune"].passed is True
+    assert report.results["copy_thread"].passed is True
+    assert report.results["delete_for_runs"].passed is True
 
 
 @pytest.mark.asyncio
@@ -174,12 +182,16 @@ async def test_checkpoint_conformance_seekdb_server() -> None:
             "list",
             "delete_thread",
             "prune",
+            "copy_thread",
+            "delete_for_runs",
         },
         progress=ProgressCallbacks.verbose(),
     )
     report.print_report()
     assert report.passed_all_base()
     assert report.results["prune"].passed is True
+    assert report.results["copy_thread"].passed is True
+    assert report.results["delete_for_runs"].passed is True
 
 
 @pytest.mark.asyncio
@@ -197,9 +209,13 @@ async def test_checkpoint_conformance_mysql_server() -> None:
             "list",
             "delete_thread",
             "prune",
+            "copy_thread",
+            "delete_for_runs",
         },
         progress=ProgressCallbacks.verbose(),
     )
     report.print_report()
     assert report.passed_all_base()
     assert report.results["prune"].passed is True
+    assert report.results["copy_thread"].passed is True
+    assert report.results["delete_for_runs"].passed is True

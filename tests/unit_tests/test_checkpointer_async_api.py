@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -123,3 +124,222 @@ def test_prepare_metadata_matches_langgraph_serialization_rules(
     assert "thread_id" not in prepared
     assert "checkpoint_id" not in prepared
     assert "checkpoint_ns" not in prepared
+
+
+@pytest.mark.asyncio
+async def test_asetup_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """asetup should delegate to setup."""
+    setup = MagicMock()
+    monkeypatch.setattr(saver, "setup", setup)
+
+    await saver.asetup()
+
+    setup.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_aput_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """aput should delegate to put and propagate its return value."""
+    expected = MagicMock(name="next_config")
+    put = MagicMock(return_value=expected)
+    monkeypatch.setattr(saver, "put", put)
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    checkpoint = MagicMock(name="checkpoint")
+    metadata = cast(CheckpointMetadata, {"source": "loop"})
+    new_versions = MagicMock(name="new_versions")
+
+    result = await saver.aput(config, checkpoint, metadata, new_versions)
+
+    put.assert_called_once_with(config, checkpoint, metadata, new_versions)
+    assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_aput_writes_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """aput_writes should delegate to put_writes."""
+    put_writes = MagicMock()
+    monkeypatch.setattr(saver, "put_writes", put_writes)
+
+    config: RunnableConfig = {
+        "configurable": {"thread_id": "t", "checkpoint_id": "cp-1"}
+    }
+    writes = [("channel-1", "value-1")]
+
+    await saver.aput_writes(config, writes, "task-1", "task-path")
+
+    put_writes.assert_called_once_with(config, writes, "task-1", "task-path")
+
+
+@pytest.mark.asyncio
+async def test_adelete_thread_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """adelete_thread should delegate to delete_thread."""
+    delete_thread = MagicMock()
+    monkeypatch.setattr(saver, "delete_thread", delete_thread)
+
+    await saver.adelete_thread("thread-1")
+
+    delete_thread.assert_called_once_with("thread-1")
+
+
+@pytest.mark.asyncio
+async def test_aprune_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """aprune should delegate to prune and forward the strategy kwarg."""
+    prune = MagicMock()
+    monkeypatch.setattr(saver, "prune", prune)
+
+    await saver.aprune(["thread-1", "thread-2"], strategy="delete")
+
+    prune.assert_called_once_with(["thread-1", "thread-2"], strategy="delete")
+
+
+@pytest.mark.asyncio
+async def test_acopy_thread_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """acopy_thread should delegate to copy_thread."""
+    copy_thread = MagicMock()
+    monkeypatch.setattr(saver, "copy_thread", copy_thread)
+
+    await saver.acopy_thread("source-thread", "target-thread")
+
+    copy_thread.assert_called_once_with("source-thread", "target-thread")
+
+
+@pytest.mark.asyncio
+async def test_adelete_for_runs_delegates_to_sync_method(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """adelete_for_runs should delegate to delete_for_runs."""
+    delete_for_runs = MagicMock()
+    monkeypatch.setattr(saver, "delete_for_runs", delete_for_runs)
+
+    await saver.adelete_for_runs(["run-1", "run-2"])
+
+    delete_for_runs.assert_called_once_with(["run-1", "run-2"])
+
+
+def test_detected_capabilities_include_copy_thread_and_delete_for_runs(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """The saver should advertise the extended copy_thread/delete_for_runs caps."""
+    detected = {cap.value for cap in DetectedCapabilities.from_instance(saver).detected}
+    assert "copy_thread" in detected
+    assert "delete_for_runs" in detected
+
+
+@pytest.mark.asyncio
+async def test_aget_tuple_runs_off_the_event_loop_thread(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sync work must run on an executor thread, not the loop thread.
+
+    This is the only behavior the thread-pool wrappers add over a plain inline
+    call. All async methods share the same ``_run`` offload path, so asserting
+    it for one representative method covers the contract.
+    """
+    loop_thread_id = threading.get_ident()
+    observed: dict[str, int] = {}
+
+    def record_thread(_config: RunnableConfig) -> None:
+        observed["thread_id"] = threading.get_ident()
+        return None
+
+    monkeypatch.setattr(saver, "get_tuple", record_thread)
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    await saver.aget_tuple(config)
+
+    assert observed["thread_id"] != loop_thread_id
+
+
+@pytest.mark.asyncio
+async def test_async_method_propagates_sync_exception(
+    saver: OceanBaseCheckpointSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exceptions raised in the sync method must surface through the executor.
+
+    All async methods share ``_run``; offloading to the executor must not
+    swallow or re-wrap the original exception.
+    """
+
+    def boom(_config: RunnableConfig) -> None:
+        raise ValueError("sync failure")
+
+    monkeypatch.setattr(saver, "get_tuple", boom)
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    with pytest.raises(ValueError, match="sync failure"):
+        await saver.aget_tuple(config)
+
+
+@pytest.mark.asyncio
+async def test_async_method_after_close_raises(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """Calling an async method after close() must raise, per the documented contract."""
+    saver.close()
+
+    config: RunnableConfig = {"configurable": {"thread_id": "t", "checkpoint_ns": ""}}
+    with pytest.raises(RuntimeError):
+        await saver.aget_tuple(config)
+
+
+def test_close_shuts_down_executor_and_is_idempotent(
+    saver: OceanBaseCheckpointSaver,
+) -> None:
+    """close() should shut the executor down and tolerate repeated calls."""
+    saver.close()
+    # Observable effect: the executor refuses new work after shutdown.
+    with pytest.raises(RuntimeError):
+        saver._executor.submit(lambda: None)
+    # Second call must not raise.
+    saver.close()
+
+
+def test_context_manager_closes_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Using the saver as a context manager should shut the executor down."""
+    monkeypatch.setattr(
+        OceanBaseCheckpointSaver, "_create_client", lambda self, **_: None
+    )
+    with OceanBaseCheckpointSaver(connection_args={}) as saver:
+        executor = saver._executor
+        assert executor.submit(lambda: None).result() is None
+    with pytest.raises(RuntimeError):
+        executor.submit(lambda: None)
+
+
+@pytest.mark.asyncio
+async def test_async_context_manager_closes_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Using the saver as an async context manager should shut the executor down."""
+    monkeypatch.setattr(
+        OceanBaseCheckpointSaver, "_create_client", lambda self, **_: None
+    )
+    async with OceanBaseCheckpointSaver(connection_args={}) as saver:
+        executor = saver._executor
+        assert executor.submit(lambda: None).result() is None
+    with pytest.raises(RuntimeError):
+        executor.submit(lambda: None)

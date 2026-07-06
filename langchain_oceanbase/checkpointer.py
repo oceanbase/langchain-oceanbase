@@ -7,13 +7,16 @@ their state within and across multiple interactions.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import random
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, nullcontext
+from functools import partial
 from typing import Any, Dict, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
@@ -32,6 +35,7 @@ from pyobvector import ObVecClient  # type: ignore[import-untyped]
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import ResourceClosedError
+from sqlalchemy.pool import NullPool
 
 from langchain_oceanbase.exceptions import OceanBaseConnectionError
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
@@ -192,12 +196,15 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
     """
 
     lock: threading.Lock
+    _executor: ThreadPoolExecutor
+    _serialize_access: bool
 
     def __init__(
         self,
         connection_args: Optional[Dict[str, Any]] = None,
         *,
         serde: Optional[SerializerProtocol] = None,
+        max_workers: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the OceanBase checkpoint saver.
@@ -213,6 +220,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                   in-process SeekDB instead of a remote connection.
                   Requires ``pip install langchain-oceanbase[pyseekdb]``.
             serde: Optional serializer for encoding/decoding checkpoints.
+            max_workers: Maximum number of threads in the executor pool
+                for async operations. Defaults to None (uses Python's default).
             **kwargs: Additional arguments passed to ObVecClient.
         """
         super().__init__(serde=serde)
@@ -222,8 +231,45 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             else DEFAULT_OCEANBASE_CONNECTION
         )
         self.lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._kwargs = kwargs
         self._create_client(**kwargs)
+
+        # Embedded SeekDB runs against a non-thread-safe, process-wide singleton
+        # and must serialize all access via self.lock. Remote OceanBase/MySQL use
+        # SQLAlchemy's thread-safe pool and need no global lock — serializing them
+        # would needlessly bottleneck concurrency. Detect embedded via the
+        # connection_args signal plus a NullPool backstop (see the helper).
+        self._serialize_access = self._requires_serialized_access()
+
+    def close(self) -> None:
+        """Shut down the thread pool executor backing the async methods.
+
+        Safe to call multiple times. After calling, the async methods can no
+        longer be used. Prefer using the saver as a (async) context manager so
+        this is invoked automatically.
+        """
+        self._executor.shutdown(wait=True)
+
+    def __enter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    async def __aenter__(self) -> "OceanBaseCheckpointSaver":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Best-effort cleanup so a saver that was neither closed nor used as a
+        # context manager does not leak its worker threads. Never wait or raise
+        # from a finalizer.
+        executor = getattr(self, "_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=False)
 
     def _create_client(self, **kwargs: Any) -> None:
         """Create and initialize the OceanBase vector client.
@@ -272,14 +318,40 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             logger.error(f"Failed to create OceanBase client: {e}")
             raise
 
+    def _requires_serialized_access(self) -> bool:
+        """Return True when DB access must be serialized through ``self.lock``.
+
+        Embedded SeekDB wraps a non-thread-safe, process-wide singleton, so its
+        connections must run one at a time; remote OceanBase/MySQL use a
+        thread-safe connection pool and need no global lock. Embedded is detected
+        two ways: an explicit ``path`` / ``pyseekdb_client`` in ``connection_args``
+        (``path`` is what :meth:`_create_client` branches on), and — as the
+        load-bearing backstop for embedded clients/engines supplied via
+        ``**kwargs`` (which never appear in ``connection_args``) — a ``NullPool``
+        engine, which is what pyobvector builds for every embedded backend. Also
+        serialize when the pool cannot be determined.
+        """
+        if (
+            self.connection_args.get("path") is not None
+            or self.connection_args.get("pyseekdb_client") is not None
+        ):
+            return True
+        pool = getattr(getattr(self, "obvector", None), "engine", None)
+        pool = getattr(pool, "pool", None)
+        return pool is None or isinstance(pool, NullPool)
+
     @contextmanager
     def _cursor(self) -> Iterator[Connection]:
         """Create a database connection as a context manager.
 
+        Acquires the global lock only for backends that require serialized
+        access (embedded SeekDB); pooled remote backends run concurrently.
+
         Yields:
             A SQLAlchemy connection object for executing SQL statements.
         """
-        with self.lock:
+        lock_cm = self.lock if self._serialize_access else nullcontext()
+        with lock_cm:
             with self.obvector.engine.connect() as conn:
                 yield conn
 
@@ -362,6 +434,17 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             self._ensure_required_indexes(conn)
             conn.commit()
 
+    async def _run(self, func: Any, /, *args: Any, **kwargs: Any) -> Any:
+        """Run a blocking callable on the executor without blocking the loop."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, partial(func, *args, **kwargs)
+        )
+
+    async def asetup(self) -> None:
+        """Async version of setup using a thread pool executor."""
+        await self._run(self.setup)
+
     @staticmethod
     def _is_duplicate_index_error(exc: Exception) -> bool:
         """Return True when an index DDL failed because the index already exists."""
@@ -405,8 +488,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     raise
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Async wrapper for get_tuple."""
-        return self.get_tuple(config)
+        """Async version of get_tuple using a thread pool executor."""
+        return await self._run(self.get_tuple, config)
 
     async def alist(
         self,
@@ -416,8 +499,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         before: Optional[RunnableConfig] = None,
         limit: Optional[int] = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        """Async wrapper for list."""
-        items = list(self.list(config, filter=filter, before=before, limit=limit))
+        """Async version of list using a thread pool executor."""
+
+        def _list_sync() -> list[CheckpointTuple]:
+            return list(self.list(config, filter=filter, before=before, limit=limit))
+
+        items = await self._run(_list_sync)
         for item in items:
             yield item
 
@@ -428,8 +515,8 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Async wrapper for put."""
-        return self.put(config, checkpoint, metadata, new_versions)
+        """Async version of put using a thread pool executor."""
+        return await self._run(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -438,12 +525,12 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        """Async wrapper for put_writes."""
-        self.put_writes(config, writes, task_id, task_path)
+        """Async version of put_writes using a thread pool executor."""
+        await self._run(self.put_writes, config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
-        """Async wrapper for delete_thread."""
-        self.delete_thread(thread_id)
+        """Async version of delete_thread using a thread pool executor."""
+        await self._run(self.delete_thread, thread_id)
 
     async def aprune(
         self,
@@ -451,8 +538,16 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Async wrapper for prune."""
-        self.prune(thread_ids, strategy=strategy)
+        """Async version of prune using a thread pool executor."""
+        await self._run(self.prune, thread_ids, strategy=strategy)
+
+    async def acopy_thread(self, source_thread_id: str, target_thread_id: str) -> None:
+        """Async version of copy_thread using a thread pool executor."""
+        await self._run(self.copy_thread, source_thread_id, target_thread_id)
+
+    async def adelete_for_runs(self, run_ids: Sequence[str]) -> None:
+        """Async version of delete_for_runs using a thread pool executor."""
+        await self._run(self.delete_for_runs, run_ids)
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
@@ -556,32 +651,38 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if not channel_versions:
             return {}
 
+        # Batch all channel/version lookups into a single query (avoids an N+1
+        # round-trip per channel). Match the same OR-of-pairs binding pattern
+        # used by prune/delete_for_runs for cross-backend portability.
+        params: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+        }
+        conditions = []
+        for idx, (channel, version) in enumerate(channel_versions.items()):
+            params[f"channel_{idx}"] = channel
+            params[f"version_{idx}"] = str(version)
+            conditions.append(
+                f"(channel = :channel_{idx} AND version = :version_{idx})"
+            )
+
+        query = text(
+            "SELECT channel, `type`, `blob` FROM checkpoint_blobs "
+            "WHERE thread_id = :thread_id "
+            "AND checkpoint_ns = :checkpoint_ns "
+            f"AND ({' OR '.join(conditions)})"
+        )
+        result = conn.execute(query, params)
+
         channel_values = {}
-        for channel, version in channel_versions.items():
-            query = text(
-                "SELECT `type`, `blob` FROM checkpoint_blobs "
-                "WHERE thread_id = :thread_id "
-                "AND checkpoint_ns = :checkpoint_ns "
-                "AND channel = :channel "
-                "AND version = :version"
-            )
-            result = conn.execute(
-                query,
-                {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "channel": channel,
-                    "version": str(version),
-                },
-            )
-            row = self._result_fetchone_or_none(result)
-            if row and row[0] != "empty":
-                type_str, blob = row[0], row[1]
-                decoded_blob = self._decode_storage_blob(blob)
-                if decoded_blob is not None:
-                    channel_values[channel] = self.serde.loads_typed(
-                        (type_str, decoded_blob)
-                    )
+        for channel, type_str, blob in self._result_fetchall(result):
+            if type_str == "empty":
+                continue
+            decoded_blob = self._decode_storage_blob(blob)
+            if decoded_blob is not None:
+                channel_values[channel] = self.serde.loads_typed(
+                    (type_str, decoded_blob)
+                )
 
         return channel_values
 
@@ -718,6 +819,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         based on the provided config. The checkpoints are ordered by checkpoint ID
         in descending order (newest first).
 
+        All matching tuples are loaded eagerly (so the database connection — and,
+        for embedded backends, the global lock — is released before iteration),
+        so peak memory scales with the result size. Pass ``limit`` when listing
+        long-lived threads.
+
         Args:
             config: The config to use for listing the checkpoints.
             filter: Additional filtering criteria for metadata.
@@ -741,6 +847,10 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         if limit is not None:
             query += f" LIMIT {int(limit)}"
 
+        # Materialize all tuples while holding the connection (and, for embedded
+        # backends, the lock), then yield outside the cursor block so a slow
+        # consumer cannot hold the connection/lock open across iterations.
+        items: list[CheckpointTuple] = []
         with self._cursor() as conn:
             result = conn.execute(text(query), params)
             rows = self._result_fetchall(result)
@@ -758,7 +868,11 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
                     conn, thread_id, checkpoint_ns, checkpoint_id
                 )
 
-                yield self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                items.append(
+                    self._row_to_checkpoint_tuple(row, channel_values, pending_writes)
+                )
+
+        yield from items
 
     def _build_where_clause(
         self,
@@ -1036,13 +1150,177 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
             )
             conn.commit()
 
+    def copy_thread(self, source_thread_id: str, target_thread_id: str) -> None:
+        """Copy all checkpoints and writes from one thread to another.
+
+        Copies the complete parent chain (every ancestor checkpoint and its
+        blobs and writes), preserving namespaces, ordering, metadata, channel
+        values and pending writes. Only ``thread_id`` is rewritten. If the
+        source thread has no checkpoints this is a no-op. Rows already present
+        on the target are left untouched (``INSERT IGNORE``), so a repeated copy
+        is idempotent.
+
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the source thread. Run it when the source thread
+            is not being actively written (the standard single-writer-per-thread
+            assumption), as with the other SQL-backed LangGraph savers.
+
+        Args:
+            source_thread_id: The thread ID to copy from.
+            target_thread_id: The thread ID to copy to.
+
+        Example:
+            .. code-block:: python
+
+                checkpointer.copy_thread("thread-a", "thread-b")
+        """
+        params = {
+            "source_thread_id": source_thread_id,
+            "target_thread_id": target_thread_id,
+        }
+        with self._cursor() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoints
+                    (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id,
+                     `type`, checkpoint, metadata)
+                    SELECT :target_thread_id, checkpoint_ns, checkpoint_id,
+                           parent_checkpoint_id, `type`, checkpoint, metadata
+                    FROM checkpoints
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoint_blobs
+                    (thread_id, checkpoint_ns, channel, version, `type`, `blob`)
+                    SELECT :target_thread_id, checkpoint_ns, channel, version,
+                           `type`, `blob`
+                    FROM checkpoint_blobs
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO checkpoint_writes
+                    (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path,
+                     idx, channel, `type`, `blob`)
+                    SELECT :target_thread_id, checkpoint_ns, checkpoint_id, task_id,
+                           task_path, idx, channel, `type`, `blob`
+                    FROM checkpoint_writes
+                    WHERE thread_id = :source_thread_id
+                    """
+                ),
+                params,
+            )
+            conn.commit()
+
+    def delete_for_runs(self, run_ids: Sequence[str]) -> None:
+        """Delete all checkpoints and writes associated with the given run IDs.
+
+        ``run_id`` is stored inside each checkpoint's ``metadata`` JSON (it flows
+        from ``config["metadata"]["run_id"]``). Checkpoints whose metadata
+        ``run_id`` matches are deleted together with their pending writes,
+        across all namespaces. An empty list or unknown run IDs are a no-op.
+
+        Channel blobs are content-addressed by ``(thread_id, checkpoint_ns,
+        channel, version)`` and shared across the checkpoints of a thread, so
+        they are not removed here; reclaim them with :meth:`prune` or
+        :meth:`delete_thread`.
+
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so it is not isolated against
+            concurrent writes to the affected threads. Run it when those threads
+            are not being actively written (the standard single-writer-per-thread
+            assumption).
+
+        Args:
+            run_ids: The run IDs whose checkpoints should be deleted.
+
+        Example:
+            .. code-block:: python
+
+                checkpointer.delete_for_runs(["run-1", "run-2"])
+        """
+        if not run_ids:
+            return
+
+        with self._cursor() as conn:
+            params: Dict[str, Any] = {}
+            placeholders = []
+            for idx, run_id in enumerate(run_ids):
+                key = f"run_id_{idx}"
+                params[key] = run_id
+                placeholders.append(f":{key}")
+            run_id_filter = ", ".join(placeholders)
+
+            # blobs/writes carry no run_id, so identify the checkpoints produced
+            # by these runs once and cascade deletes off the matched keys.
+            matched = self._result_fetchall(
+                conn.execute(
+                    text(
+                        f"""
+                        SELECT thread_id, checkpoint_ns, checkpoint_id
+                        FROM checkpoints
+                        WHERE JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.run_id'))
+                              IN ({run_id_filter})
+                        """
+                    ),
+                    params,
+                )
+            )
+            if not matched:
+                return
+
+            # Cascade off the matched keys with an OR-of-tuples predicate. A
+            # run_id maps to only a handful of checkpoints (roughly one per
+            # namespace), so this stays small; batch it if that ever changes.
+            key_params: Dict[str, Any] = {}
+            conditions = []
+            for idx, (thread_id, checkpoint_ns, checkpoint_id) in enumerate(matched):
+                key_params[f"thread_id_{idx}"] = thread_id
+                key_params[f"checkpoint_ns_{idx}"] = checkpoint_ns
+                key_params[f"checkpoint_id_{idx}"] = checkpoint_id
+                conditions.append(
+                    f"(thread_id = :thread_id_{idx} "
+                    f"AND checkpoint_ns = :checkpoint_ns_{idx} "
+                    f"AND checkpoint_id = :checkpoint_id_{idx})"
+                )
+            where_clause = " OR ".join(conditions)
+
+            for table in ("checkpoint_writes", "checkpoints"):
+                conn.execute(
+                    text(f"DELETE FROM {table} WHERE {where_clause}"),
+                    key_params,
+                )
+            conn.commit()
+
     def prune(
         self,
         thread_ids: Sequence[str],
         *,
         strategy: str = "keep_latest",
     ) -> None:
-        """Prune checkpoints for the given threads."""
+        """Prune checkpoints for the given threads.
+
+        .. note::
+            This is a maintenance operation. On remote (pooled) backends it runs
+            without the embedded-only global lock, so its read-then-delete steps
+            are not isolated against concurrent writes to the same threads. Run it
+            when those threads are not being actively written (the standard
+            single-writer-per-thread assumption); otherwise a checkpoint or blob
+            committed mid-prune may be removed.
+        """
         if not thread_ids:
             return
 
