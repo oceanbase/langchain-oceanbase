@@ -3135,25 +3135,14 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pylibseekdb"
-version = "1.3.0.post2"
+version = "1.3.0.post3"
 description = "Python bindings for the seekdb C client"
 optional = true
 python-versions = ">=3.11"
 groups = ["main"]
 markers = "(sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\") and extra == \"pyseekdb\""
 files = [
-    {file = "pylibseekdb-1.3.0.post2-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:1c8a90368970e0c761a832754deeb3459f6a8365ba019f52c9f7b75e0cae8010"},
-    {file = "pylibseekdb-1.3.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:cedf59067c648e37eab9f15eec122be508353f76ac1871506f5aba51d0bd57f5"},
-    {file = "pylibseekdb-1.3.0.post2-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:8ed2edef2ac70f52a2562313d7007e8d3977b694c022c0253acc1c6145231dd4"},
-    {file = "pylibseekdb-1.3.0.post2-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:21bf563aa8b7d990a73b9e6ec5f8a83aedc2845a28381b7ced6c25603cd0ffef"},
-    {file = "pylibseekdb-1.3.0.post2-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:1f2a55eb5646fecfacafd0241339709feec9dff59b852bd1aee3db408b87a412"},
-    {file = "pylibseekdb-1.3.0.post2-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:d0ef75b6f35c2686238c573f0fa1075b2f3c054d441ae9a907e3ff68d732f65d"},
-    {file = "pylibseekdb-1.3.0.post2-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:ff8cd736496fe30e70789c5207fb214b687236d03bfb8473a3721c6113dccbf9"},
-    {file = "pylibseekdb-1.3.0.post2-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:e2d0980654018e96ddab8a722fb88c3e27d58a58cb256fb497cbed44143f4d0f"},
-    {file = "pylibseekdb-1.3.0.post2-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:f49605c0db72183737c446f3730a3fbe3ae70e6163490bcfaf533e763d9072fc"},
-    {file = "pylibseekdb-1.3.0.post2-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:c91509cab2e1fc8d1c155d4ed51eda1aa96ed3d8a6bb08c1804723712fd1a348"},
-    {file = "pylibseekdb-1.3.0.post2-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:4c340bb4e2e58cafe96b24ce2246591ce3d68ab267c8ac74c0174a65d8e1cf4a"},
-    {file = "pylibseekdb-1.3.0.post2-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:2c6c6f7d60c5e1b0736a6dc53ad896dd055b9cd226ae31e1702565ec9e03e32f"},
+    {file = "pylibseekdb-1.3.0.post3-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:5733828a73f9723e84cf9ca318b228e7a9bf3c66b4684e08701373a438d087c7"},
 ]
 
 [[package]]
