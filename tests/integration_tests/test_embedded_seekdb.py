@@ -84,6 +84,8 @@ def _native_pyseekdb_collection_smoke(
         )
 
         by_id = collection.get(ids="native-1", include=["documents", "metadatas"])
+        # SeekDB 1.3.0 builds vector indexes asynchronously; flush before ANN query.
+        collection.refresh_index()
         nearest = collection.query(
             query_embeddings=[[1.0, 0.0, 0.0]],
             n_results=2,
