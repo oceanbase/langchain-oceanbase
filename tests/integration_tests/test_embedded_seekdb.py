@@ -85,16 +85,20 @@ def _native_pyseekdb_collection_smoke(
 
         by_id = collection.get(ids="native-1", include=["documents", "metadatas"])
         nearest = collection.query(
-            query_embeddings=[1.0, 0.0, 0.0],
-            n_results=1,
+            query_embeddings=[[1.0, 0.0, 0.0]],
+            n_results=2,
             include=["documents", "metadatas"],
         )
 
         assert by_id["ids"] == ["native-1"]
         assert by_id["documents"] == ["native pyseekdb embedded"]
         assert by_id["metadatas"] == [{"source": "native"}]
-        assert nearest["ids"] == [["native-1"]]
-        assert nearest["documents"] == [["native pyseekdb embedded"]]
+        assert len(nearest["ids"]) == 1
+        assert set(nearest["ids"][0]) == {"native-1", "native-2"}, nearest
+        assert set(nearest["documents"][0]) == {
+            "native pyseekdb embedded",
+            "second native document",
+        }, nearest
     except BaseException:
         queue.put(("error", traceback.format_exc()))
     else:
