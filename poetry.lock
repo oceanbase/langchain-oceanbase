@@ -3135,31 +3135,14 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pylibseekdb"
-version = "1.3.0"
-description = "An AI-Native Search Database. Unifies vector, text, structured and semi-structured data in a single engine, enabling hybrid search and in-database AI workflows."
+version = "1.3.0.post3"
+description = "Python bindings for the seekdb C client"
 optional = true
-python-versions = ">=3.8"
+python-versions = ">=3.11"
 groups = ["main"]
 markers = "(sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\") and extra == \"pyseekdb\""
 files = [
-    {file = "pylibseekdb-1.3.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:492a53cf2e8504c0f3cc69406c171617b1a0e31b694c4cda594de18be1b4a87d"},
-    {file = "pylibseekdb-1.3.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:800e90d6978ba52846240311696453cbee3017803f9cf692c49867d207ac6dcc"},
-    {file = "pylibseekdb-1.3.0-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:1d33cf82f34339bc58ac160688fc7d15ac2f7cbb226338d3887fe8350f65b762"},
-    {file = "pylibseekdb-1.3.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:77ba6786908cd8ab320ed4e5d5ef352759ef8990d72aff913467db5fe32542c4"},
-    {file = "pylibseekdb-1.3.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:4b127c21ac1178ab903735041b6afe25295731d7bcee9813e5e1576c9d384937"},
-    {file = "pylibseekdb-1.3.0-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:23cd6ad60a80543dfccb4dc9500401347b82fddb8cef10f5503e5eb816adb39f"},
-    {file = "pylibseekdb-1.3.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:ec2465e206574f5dee7870bde2434a5ab9a03c2001786b1765fcb5dd790d6f98"},
-    {file = "pylibseekdb-1.3.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:1b78f26dfbb80157169b81f22ebb80957e3c6ee7b33e5ff35beaa4d628c33915"},
-    {file = "pylibseekdb-1.3.0-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:f6f739454aff786beeccfe71b66a0d89d01b5a8a260e0b8c5c30f8e9184bd88a"},
-    {file = "pylibseekdb-1.3.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:89069e1aeeb51f61aeaa0cf5d94bedb918f46c3476d7b30183dde7b2101e5954"},
-    {file = "pylibseekdb-1.3.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:2515ea14bbac59e6f9f90a43bbaf179050ad7f8ab683d1cb9fd7fe225ccdca4e"},
-    {file = "pylibseekdb-1.3.0-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:a4177a3a6369699c9791cef3a7bfe7b472af301352237ed6e4cea42034fc0047"},
-    {file = "pylibseekdb-1.3.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:8651b8e0324fa78a5ed93b9952f4140c968655c344ef11fdb20d754077efeb05"},
-    {file = "pylibseekdb-1.3.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:e6e58bce51e709c46aae3891e723b786132da925b9b6362db4486c07044d99e8"},
-    {file = "pylibseekdb-1.3.0-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:ccf3f2c1bab07bde3489901fe0ee6e74562a839e001a5a24d71e6a8c561f7c9a"},
-    {file = "pylibseekdb-1.3.0-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:0e27371d77970ff97607ab4a50aec7da6566bd221abd7cef0f0a9de7a798afe5"},
-    {file = "pylibseekdb-1.3.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:78b22253d36d9ea16984165278c4a271347b82e79fb0259ce8da7d978ff33574"},
-    {file = "pylibseekdb-1.3.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:45fe3fe24225ab0f13fad3e5bed9c0c294181186a904e63a3763e14953c68716"},
+    {file = "pylibseekdb-1.3.0.post3-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:5733828a73f9723e84cf9ca318b228e7a9bf3c66b4684e08701373a438d087c7"},
 ]
 
 [[package]]
