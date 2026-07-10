@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-This package contains the LangChain integration with OceanBase. **Current version: 0.6.0**
+This package contains the LangChain integration with OceanBase. **Current version: 0.6.1**
 
 [OceanBase Database](https://github.com/oceanbase/oceanbase) is a distributed relational database.
 It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster.
@@ -16,12 +16,11 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 - Perform vector approximate nearest neighbor queries;
 - ...
 
-## What's New in 0.6.0
+## What's New in 0.6.1
 
-- **New checkpointer maintenance capabilities**: `OceanBaseCheckpointSaver` now implements `copy_thread` and `delete_for_runs` (plus their async variants), matching the `langgraph-checkpoint` 4.x capability surface.
-- **Non-blocking async checkpointer**: all `a*` methods now offload blocking database I/O to a thread pool instead of blocking the event loop, and the saver supports `close()` / (async) context-manager cleanup and a `max_workers` argument.
-- **Concurrency and performance**: remote OceanBase/MySQL backends no longer serialize every operation behind a global lock (embedded seekdb still does, for safety), and checkpoint reads batch their channel-value lookups into a single query.
-- **Requires a LangChain 1.x / `langgraph-checkpoint` 4.x stack** — see [Version Compatibility](#version-compatibility) before upgrading.
+- **Embedded SeekDB verification**: CI now validates `pylibseekdb 1.3.0.post3`, including a native `pyseekdb` smoke path that refreshes asynchronous index work before ANN queries.
+- **CI and dependency maintenance**: refresh GitHub Actions plus production and development dependency locks used by the supported test matrix.
+- **Same 0.6.x compatibility contract**: the package continues to require a LangChain 1.x / `langgraph-checkpoint` 4.x stack; see [Version Compatibility](#version-compatibility).
 
 ## Version Compatibility
 
@@ -34,7 +33,7 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 
 Guidance:
 - **On LangChain `1.x` with `langgraph-checkpoint 4.x`** (langgraph `1.0.6+`): use `0.6.x`. `langgraph-checkpoint 4.x` is what provides the `copy_thread` / `delete_for_runs` / `prune` checkpoint capabilities.
-- **Pinned to `langgraph-checkpoint 3.x`, langgraph `<1.0.6`, or LangChain `0.3.x`**: pin `langchain-oceanbase>=0.5,<0.6`; `0.6.0` will not resolve against that stack.
+- **Pinned to `langgraph-checkpoint 3.x`, langgraph `<1.0.6`, or LangChain `0.3.x`**: pin `langchain-oceanbase>=0.5,<0.6`; `0.6.1` will not resolve against that stack.
 
 ```bash
 # LangChain 1.x with a langgraph-checkpoint 4.x stack
@@ -54,7 +53,7 @@ For LangGraph applications, the recommended persistence surfaces are:
 - `OceanBaseCheckpointSaver` for graph state, replay, and time-travel workflows
 - `OceanBaseStore` for long-term memory, retrieval, and TTL-backed storage
 
-In `0.6.0`, the package story is straightforward:
+In `0.6.1`, the package story is straightforward:
 - OceanBase: full pack support for vectorstore + checkpoint + store
 - seekdb: full pack support for vectorstore + checkpoint + store
 - MySQL: compatible checkpoint + store backend for existing on-prem MySQL estates
