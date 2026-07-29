@@ -3171,14 +3171,14 @@ rsa = ["cryptography"]
 
 [[package]]
 name = "pyobvector"
-version = "0.2.28"
+version = "0.2.29"
 description = "A python SDK for OceanBase Vector Store, based on SQLAlchemy, compatible with Milvus API."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyobvector-0.2.28-py3-none-any.whl", hash = "sha256:36708fc0020307890b9001035904ff14719b81e20e58f2a97f7f3739dad53c72"},
-    {file = "pyobvector-0.2.28.tar.gz", hash = "sha256:d394d66f4a7dc97c221b7584e52b329e3fe61ed96b6f248d7360e3e5a53581ce"},
+    {file = "pyobvector-0.2.29-py3-none-any.whl", hash = "sha256:f7cfdf1ca0c5c6ccbc10fd096aef944cd3970970f1382441a77dff1be78744cf"},
+    {file = "pyobvector-0.2.29.tar.gz", hash = "sha256:3f0feac0ac964bb56c2e3ed661b5de84ef5bc97253ae8e9935a65fea367e3736"},
 ]
 
 [package.dependencies]
@@ -4841,4 +4841,4 @@ pyseekdb = ["pylibseekdb", "pyseekdb"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "da1a7b01b7ac27aebe4565ad922823a067240acd2b8ea0c9ac6f5f563afb9ed9"
+content-hash = "1d11948ebfa37c417e5728ab0ae673ddf231c9528baf5557619c399c63f82142"

@@ -19,6 +19,7 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 ## What's New in 0.6.1
 
 - **Embedded SeekDB verification**: CI now validates `pylibseekdb 1.3.0.post3`, including a native `pyseekdb` smoke path that refreshes asynchronous index work before ANN queries.
+- **Embedded HNSW read-after-write**: require `pyobvector 0.2.29+`, which refreshes the asynchronous embedded SeekDB index after LangChain writes through `add_texts()` / `upsert()`.
 - **CI and dependency maintenance**: refresh GitHub Actions plus production and development dependency locks used by the supported test matrix.
 - **Same 0.6.x compatibility contract**: the package continues to require a LangChain 1.x / `langgraph-checkpoint` 4.x stack; see [Version Compatibility](#version-compatibility).
 
@@ -202,7 +203,7 @@ pip install -U langchain-oceanbase
 - Python >=3.11
 - langchain-core >=1.0,<2
 - langgraph >=1.0.6,<2 and langgraph-checkpoint >=4.0,<5 (for `OceanBaseCheckpointSaver`)
-- pyobvector >=0.2.25 (required for database client)
+- pyobvector >=0.2.29 (required for database client and embedded HNSW read-after-write)
 - `pyseekdb` extra (optional; install `langchain-oceanbase[pyseekdb]` for built-in embeddings and embedded seekdb support)
 
 > **Tip**: `0.6.x` requires a LangChain **1.x** / `langgraph-checkpoint` **4.x** stack. If you are pinned to `langgraph-checkpoint 3.x` or LangChain `0.3.x`, use `langchain-oceanbase>=0.5,<0.6` instead — see [Version Compatibility](#version-compatibility).
