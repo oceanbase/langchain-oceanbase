@@ -2,17 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.6.1] - Unreleased
-
-### Fixed
+## [0.6.1]
 
 - Embedded SeekDB HNSW writes made through `OceanbaseVectorStore.add_texts()` are immediately available to ANN search by requiring the released `pyobvector` index-refresh behavior.
-
-### Changed
-
 - Require `pyobvector >=0.2.29` for both standard and `pyseekdb`-extra installations.
 - Validate the embedded SeekDB stack with `pylibseekdb 1.3.0.post3`, including native `pyseekdb` async-index smoke coverage and LangChain HNSW read-after-write coverage.
-
-### Compatibility
-
 - Continue to exclude `pylibseekdb 1.3.0.post1`, which has a separate embedded-client lifecycle hang.
+
+## [0.6.0]
+
+- Added `copy_thread` and `delete_for_runs` support to `OceanBaseCheckpointSaver`, including asynchronous counterparts and LangGraph checkpoint conformance coverage.
+- Made asynchronous checkpointer operations non-blocking and resolved concurrent-access and performance issues.
+- Raised the supported baseline to LangChain Core 1.x, LangGraph 1.x, and LangGraph Checkpoint 4.x.
+- Excluded `pylibseekdb 1.3.0.post1` after identifying its embedded-client lifecycle hang.
+
+## [0.5.2]
+
+- Raised the embedded `pylibseekdb` floor to 1.3.0 to avoid a segfault when embedded SeekDB data directories are reused.
+
+## [0.5.1]
+
+- Added embedded SeekDB mode for `OceanBaseCheckpointSaver` and `OceanBaseStore` when `connection_args` provides a local `path`.
+- Handled vector-search result rows without primary keys.
+
+## [0.5.0]
+
+- Added LangGraph Store support through `OceanBaseStore`, including semantic search, TTL handling, and embedded SeekDB coverage.
+- Moved embedded SeekDB dependencies into the optional `pyseekdb` extra so standard installations do not require the native embedded runtime.
