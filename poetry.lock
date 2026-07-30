@@ -3151,6 +3151,9 @@ files = [
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:ba5e515340988e4d8906ac386497cbab0849c3ecbe5d782fd72093f4d208f94e"},
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:aaee77db55170af5fe32a8fde4041dc3f3bf2648f25a254c2742eaa6599fad5b"},
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:b57df3dabce5c80bf2230db2dc3f55b8eb6807a79b0884c748c0380aa34aa466"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:d80831551c0bc89c0ec65c7dcc8307a3fc21dc8be63b7c7032cd8ff48038e421"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5b830bde12333c28d754dcafa07eec0742c70c68b237383861375a312e878a4e"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:2cd976b01d410b8cb07f190eb69d20b76f97257439f1d421b9bc5939bc227aff"},
 ]
 
 [[package]]
@@ -4158,14 +4161,14 @@ tests = ["aiohttp", "boto3", "cryptography", "httpbin", "httplib2", "httpx", "ht
 
 [[package]]
 name = "virtualenv"
-version = "21.5.1"
+version = "21.7.0"
 description = "Virtual Python Environment builder"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "virtualenv-21.5.1-py3-none-any.whl", hash = "sha256:55aa670b67bbfb991b03fda39bd3276d92c419d702376e98c5df1c9989a26783"},
-    {file = "virtualenv-21.5.1.tar.gz", hash = "sha256:dca3bf98275a59c652b69d68e73433e597d977c2da9198882479d1a7188009c8"},
+    {file = "virtualenv-21.7.0-py3-none-any.whl", hash = "sha256:a8370c1c5530fbabf955e40b8fbbc68a431648b10f9433faa587db30a06e51dd"},
+    {file = "virtualenv-21.7.0.tar.gz", hash = "sha256:7f9519b9432ff11b6e1a3e94061664efc2ff99ea21780e3cf4f6bd0a5da8b37c"},
 ]
 
 [package.dependencies]
