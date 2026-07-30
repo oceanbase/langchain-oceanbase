@@ -838,14 +838,13 @@ test-randomorder = ["pytest-randomly"]
 
 [[package]]
 name = "dashscope"
-version = "1.26.2"
+version = "1.26.4"
 description = "dashscope client sdk library"
 optional = false
 python-versions = ">=3.8.0"
 groups = ["test"]
 files = [
-    {file = "dashscope-1.26.2-py3-none-any.whl", hash = "sha256:6ca4eefc34bcfd54cc58a58aac6ba4a1dfdb65906a599a2b436ccc8ba08d9cbd"},
-    {file = "dashscope-1.26.2.tar.gz", hash = "sha256:2ab2b6059872bde4fef2f1d77268ddc21bad09ad282cace266437eda526c3932"},
+    {file = "dashscope-1.26.4-py3-none-any.whl", hash = "sha256:d56db91aecd4d981f2fdbdf526a2646a508c2f2b45347ed451cff6166ac17e3d"},
 ]
 
 [package.dependencies]
@@ -3151,6 +3150,9 @@ files = [
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:ba5e515340988e4d8906ac386497cbab0849c3ecbe5d782fd72093f4d208f94e"},
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:aaee77db55170af5fe32a8fde4041dc3f3bf2648f25a254c2742eaa6599fad5b"},
     {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:b57df3dabce5c80bf2230db2dc3f55b8eb6807a79b0884c748c0380aa34aa466"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:d80831551c0bc89c0ec65c7dcc8307a3fc21dc8be63b7c7032cd8ff48038e421"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5b830bde12333c28d754dcafa07eec0742c70c68b237383861375a312e878a4e"},
+    {file = "pylibseekdb-1.3.0.post3-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:2cd976b01d410b8cb07f190eb69d20b76f97257439f1d421b9bc5939bc227aff"},
 ]
 
 [[package]]
