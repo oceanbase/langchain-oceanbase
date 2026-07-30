@@ -175,6 +175,32 @@ class TestEmbeddedSeekDBConnection:
         assert len(out) == 1
         assert "embedded" in out[0].page_content
 
+    def test_connection_with_path_add_texts_is_immediately_searchable_with_hnsw(
+        self, seekdb_parent_dir: Path, embeddings: FakeEmbeddings
+    ) -> None:
+        """Keep the released pyobvector upsert index-refresh guarantee covered."""
+        db_path = str(seekdb_parent_dir / "seekdb_data_hnsw")
+        table = f"lc_embed_hnsw_{uuid.uuid4().hex[:8]}"
+        store = OceanbaseVectorStore(
+            embedding_function=embeddings,
+            table_name=table,
+            path=db_path,
+            embedding_dim=EMBED_DIM,
+            drop_old=True,
+            index_type="HNSW",
+            vidx_metric_type="l2",
+        )
+
+        ids = store.add_texts(
+            ["embedded seekdb hnsw write"], metadatas=[{"t": "hnsw"}]
+        )
+        out = store.similarity_search("hnsw write", k=1)
+
+        assert len(ids) == 1
+        assert [document.page_content for document in out] == [
+            "embedded seekdb hnsw write"
+        ]
+
     def test_connection_with_pyseekdb_client_add_and_search(
         self, seekdb_parent_dir: Path, embeddings: FakeEmbeddings
     ) -> None:

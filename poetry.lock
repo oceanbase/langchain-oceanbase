@@ -3142,7 +3142,15 @@ python-versions = ">=3.11"
 groups = ["main"]
 markers = "(sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\") and extra == \"pyseekdb\""
 files = [
+    {file = "pylibseekdb-1.3.0.post3-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:e89ce984e3222f5af7cb276510f208c07dfdf89c3a812b8ee56b86f869685e0e"},
+    {file = "pylibseekdb-1.3.0.post3-cp311-cp311-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:da1f1e8ae274281a2fb93505f688525ec50a4c02c680ebbe384313bf65862b3a"},
+    {file = "pylibseekdb-1.3.0.post3-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:514ba51eeff4a982d015c938f605ec9782aa7eedf0040af0e6adc102bd565417"},
+    {file = "pylibseekdb-1.3.0.post3-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:58cbe0c4ed609fc67f9012760c5529858ceebe96fd79a4042cddf52b7ea4813e"},
+    {file = "pylibseekdb-1.3.0.post3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fadcf644e9d1187f04d671816ac0ddb0ae88018fefd53b40eee2f81ee509bb97"},
     {file = "pylibseekdb-1.3.0.post3-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:5733828a73f9723e84cf9ca318b228e7a9bf3c66b4684e08701373a438d087c7"},
+    {file = "pylibseekdb-1.3.0.post3-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:ba5e515340988e4d8906ac386497cbab0849c3ecbe5d782fd72093f4d208f94e"},
+    {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:aaee77db55170af5fe32a8fde4041dc3f3bf2648f25a254c2742eaa6599fad5b"},
+    {file = "pylibseekdb-1.3.0.post3-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:b57df3dabce5c80bf2230db2dc3f55b8eb6807a79b0884c748c0380aa34aa466"},
 ]
 
 [[package]]
@@ -3163,14 +3171,14 @@ rsa = ["cryptography"]
 
 [[package]]
 name = "pyobvector"
-version = "0.2.28"
+version = "0.2.29"
 description = "A python SDK for OceanBase Vector Store, based on SQLAlchemy, compatible with Milvus API."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyobvector-0.2.28-py3-none-any.whl", hash = "sha256:36708fc0020307890b9001035904ff14719b81e20e58f2a97f7f3739dad53c72"},
-    {file = "pyobvector-0.2.28.tar.gz", hash = "sha256:d394d66f4a7dc97c221b7584e52b329e3fe61ed96b6f248d7360e3e5a53581ce"},
+    {file = "pyobvector-0.2.29-py3-none-any.whl", hash = "sha256:f7cfdf1ca0c5c6ccbc10fd096aef944cd3970970f1382441a77dff1be78744cf"},
+    {file = "pyobvector-0.2.29.tar.gz", hash = "sha256:3f0feac0ac964bb56c2e3ed661b5de84ef5bc97253ae8e9935a65fea367e3736"},
 ]
 
 [package.dependencies]
@@ -4833,4 +4841,4 @@ pyseekdb = ["pylibseekdb", "pyseekdb"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "da1a7b01b7ac27aebe4565ad922823a067240acd2b8ea0c9ac6f5f563afb9ed9"
+content-hash = "1d11948ebfa37c417e5728ab0ae673ddf231c9528baf5557619c399c63f82142"
