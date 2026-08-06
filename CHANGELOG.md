@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.2]
+
+- Bump `pylibseekdb` to `1.3.0.post4` in `pyproject.toml` for stable Unix-socket async I/O support.
+- Bump CI workflows to use `actions/setup-python@v7`.
+- Refresh dependency lockfile for maintenance dependency updates (`dashscope`, `aiohttp`, `virtualenv`, production/development dependency groups).
+
 ## [0.6.1]
 
 - Embedded SeekDB HNSW writes made through `OceanbaseVectorStore.add_texts()` are immediately available to ANN search by requiring the released `pyobvector` index-refresh behavior.
