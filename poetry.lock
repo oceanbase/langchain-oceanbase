@@ -839,14 +839,13 @@ test-randomorder = ["pytest-randomly"]
 
 [[package]]
 name = "dashscope"
-version = "1.26.2"
+version = "1.26.5"
 description = "dashscope client sdk library"
 optional = false
 python-versions = ">=3.8.0"
 groups = ["test"]
 files = [
-    {file = "dashscope-1.26.2-py3-none-any.whl", hash = "sha256:6ca4eefc34bcfd54cc58a58aac6ba4a1dfdb65906a599a2b436ccc8ba08d9cbd"},
-    {file = "dashscope-1.26.2.tar.gz", hash = "sha256:2ab2b6059872bde4fef2f1d77268ddc21bad09ad282cace266437eda526c3932"},
+    {file = "dashscope-1.26.5-py3-none-any.whl", hash = "sha256:95b74d539b6243306401867cf4dfa78a1cf72c0f666572ac63e111d4960b4ef7"},
 ]
 
 [package.dependencies]
