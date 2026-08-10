@@ -3211,14 +3211,14 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyseekdb"
-version = "1.4.0"
+version = "1.4.0.post1"
 description = "A unified Python client for seekdb that supports embedded, server, and OceanBase."
 optional = true
 python-versions = "<4,>=3.11"
 groups = ["main"]
 markers = "extra == \"pyseekdb\""
 files = [
-    {file = "pyseekdb-1.4.0-py3-none-any.whl", hash = "sha256:8d4069b5246fc3b08865171e7842fe58e17c3b74d66aec5c0ec46e17fa5ea0a1"},
+    {file = "pyseekdb-1.4.0.post1-py3-none-any.whl", hash = "sha256:a3379f6962a0c01aa029d3e5a8f0c0f5a59b27a689b8aae1931d9ce5563f252c"},
 ]
 
 [package.dependencies]
