@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.3]
+
+- Raise seekDB dependency floors to `pyseekdb >=1.4.0.post1,<3`, `pylibseekdb >=1.4.0,<2`, and `pyobvector >=0.2.29`.
+- Stabilize the embedded seekDB hybrid-search performance test for native-runtime cold starts while retaining the tighter server-backed threshold.
+- Include merged production and development dependency refreshes for LangChain/LangGraph, test tooling, `dashscope`, and `virtualenv`.
+
 ## [0.6.2]
 
 - Bump `pylibseekdb` to `1.3.0.post4` in `pyproject.toml` for stable Unix-socket async I/O support.
