@@ -450,7 +450,9 @@ class TestHybridSearch:
             assert isinstance(doc.metadata, dict)
             assert "topic" in doc.metadata or "author" in doc.metadata
 
-    def test_performance_with_large_dataset(self, hybrid_vectorstore):
+    def test_performance_with_large_dataset(
+        self, hybrid_vectorstore, integration_backend_name: str
+    ):
         """Test performance with a larger dataset."""
         large_documents = []
         large_sparse_embeddings = []
@@ -486,7 +488,13 @@ class TestHybridSearch:
         )
         search_time = time.time() - start_time
 
-        assert insertion_time < 10.0
+        # Embedded seekDB can pay native runtime warm-up costs during the first
+        # measured write, especially on shared CI runners. Keep the tighter
+        # server-backed budget while allowing enough headroom for cold starts.
+        max_insertion_seconds = (
+            20.0 if integration_backend_name == "embedded-seekdb" else 10.0
+        )
+        assert insertion_time < max_insertion_seconds
         assert search_time < 2.0
         assert len(results) >= 1
 
