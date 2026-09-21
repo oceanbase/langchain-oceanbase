@@ -839,14 +839,14 @@ test-randomorder = ["pytest-randomly"]
 
 [[package]]
 name = "dashscope"
-version = "1.27.5"
+version = "1.27.6"
 description = "dashscope client sdk library"
 optional = false
 python-versions = ">=3.9"
 groups = ["test"]
 files = [
-    {file = "dashscope-1.27.5-py3-none-any.whl", hash = "sha256:54581f45ec5ad930c9cc42ca572ce2d8e9d38262fe0d6157b1207462318543b3"},
-    {file = "dashscope-1.27.5.tar.gz", hash = "sha256:bf64e06eb60ffcac92d2840b7ecc72a00b81a395b23107b2727b971b8285375b"},
+    {file = "dashscope-1.27.6-py3-none-any.whl", hash = "sha256:b78ba7effde59c9de2b7b8efa719a98d36804a3893d93d499878ab2525202eb1"},
+    {file = "dashscope-1.27.6.tar.gz", hash = "sha256:ed0ea724865595eba1e18c86708ab9b29befda7a0e4e764858f5b2a493820322"},
 ]
 
 [package.dependencies]
@@ -3163,9 +3163,11 @@ groups = ["main"]
 markers = "(sys_platform == \"linux\" or sys_platform == \"darwin\" and platform_machine == \"arm64\") and extra == \"pyseekdb\""
 files = [
     {file = "pylibseekdb-1.4.0.post1-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:0fab086fc36a638fecbd1e1e2d232e35fa753f1d99072e26b7f0bcbcf2c442ba"},
+    {file = "pylibseekdb-1.4.0.post1-cp311-cp311-macosx_15_0_x86_64.whl", hash = "sha256:9865c365c69447c0dce32ff22bc33bcc59bc628fc178c430e4e6203f68a429f7"},
     {file = "pylibseekdb-1.4.0.post1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:3620c821b1a03a961ccfd76cbcc90f2f05d95bc00e4e0a396cb5ae17eb56f059"},
     {file = "pylibseekdb-1.4.0.post1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:7c1c1e13148189af1332f69b896a818b674db3a4615c7caf1c9db05055738ad6"},
     {file = "pylibseekdb-1.4.0.post1-cp312-abi3-macosx_15_0_arm64.whl", hash = "sha256:ad34939175ee900e0e0af52d32868a50d5470200a34cba32558678b5edb8ed3f"},
+    {file = "pylibseekdb-1.4.0.post1-cp312-abi3-macosx_15_0_x86_64.whl", hash = "sha256:0a0a9a68639547f721f581f184faa793a25e70414e6bed2edf14f379224165d8"},
     {file = "pylibseekdb-1.4.0.post1-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:e2887533ab68a84197a222393e6d8fc8282274aa5e99af4f8259c5dfce147914"},
     {file = "pylibseekdb-1.4.0.post1-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:58f2544cf7969a9b6cdf4ea1136e0d412443a2e839df656feec1b2712741ef85"},
 ]
