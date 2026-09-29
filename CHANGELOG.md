@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.4]
+
+- Fix SQL injection and cross-thread/namespace reads in the deprecated `OceanBaseSaver` by binding query values, quoting table identifiers, and applying the complete checkpoint key to reads and pagination.
+- Raise vulnerable dependency minimums and refresh the lockfile to address 31 Dependabot alerts while preserving development/test dependency groups and optional embedded seekdb support.
+- Restore Poetry-based dependency automation by removing an unused, empty `uv.lock`.
+- Fall back to per-document reranking when the batch `ai_rerank` query returns no result.
+- Enforce type-check failures and CI job outcomes, run the complete unit suite, and validate dependency installation and package builds on Python 3.11–3.13.
+- Refresh locked dependencies, including LangChain Core `1.6.5`, LangGraph `1.2.12`, LangChain standard tests `1.1.9`, `dashscope` `1.27.7`, `virtualenv` `21.12.1`, Ruff `0.16.9`, and the `pylibseekdb` runtime.
+- Update README upgrade guidance for `0.6.4`, clarify the legacy checkpoint saver status, and document the supported Python 3.11–3.13 range.
+
 ## [0.6.3]
 
 - Raise seekDB dependency floors to `pyseekdb >=1.4.0.post1,<3` and `pylibseekdb >=1.4.0,<2`; retain `pyobvector >=0.2.29`.
