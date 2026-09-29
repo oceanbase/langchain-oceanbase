@@ -468,9 +468,9 @@ class OceanBaseCheckpointSaver(BaseCheckpointSaver[str]):
         """Return the current index names for a table."""
         try:
             return {
-                index["name"]
+                name
                 for index in inspect(conn).get_indexes(table_name)
-                if index.get("name")
+                if (name := index.get("name"))
             }
         except Exception:
             result = conn.execute(text(f"SHOW INDEX FROM `{table_name}`"))

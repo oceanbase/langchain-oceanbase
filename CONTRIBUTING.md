@@ -110,7 +110,8 @@ git push origin feature/onboard-docker-compose
 - `release/*` -> `main`
 - `hotfix/*` -> `main`, then back-merge to `develop`
 - Dependabot version updates target `develop`
-- Dependabot security updates still follow the GitHub default branch until a repo admin switches the default branch from `main` to `develop`
+- Dependabot security updates follow the GitHub default branch, currently `develop`
+- Maintain dependencies with Poetry and commit `poetry.lock`; do not add an empty `uv.lock`, which can make automatic security updates select the wrong ecosystem
 
 Include:
 - Problem you're solving

@@ -8,7 +8,19 @@ import math
 import traceback
 import uuid
 from numbers import Real
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+    overload,
+)
 
 import numpy as np
 from langchain_core.documents import Document
@@ -599,6 +611,21 @@ class OceanbaseVectorStore(VectorStore):
 
         return Document(id=doc_id, page_content=page_content, metadata=metadata), score
 
+    @overload
+    def _convert_results_to_documents(
+        self, results: Any, include_score: Literal[False] = False
+    ) -> List[Document]: ...
+
+    @overload
+    def _convert_results_to_documents(
+        self, results: Any, include_score: Literal[True]
+    ) -> List[Tuple[Document, float]]: ...
+
+    @overload
+    def _convert_results_to_documents(
+        self, results: Any, include_score: bool
+    ) -> List[Document] | List[Tuple[Document, float]]: ...
+
     def _convert_results_to_documents(
         self, results: Any, include_score: bool = False
     ) -> List[Document] | List[Tuple[Document, float]]:
@@ -620,7 +647,8 @@ class OceanbaseVectorStore(VectorStore):
                 document, score = self._convert_result_row_to_document(
                     row, include_score=True
                 )
-                documents_with_scores.append((document, score))
+                # Scored searches request with_dist=True from the database.
+                documents_with_scores.append((document, cast(float, score)))
             return documents_with_scores
         else:
             return [
