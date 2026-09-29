@@ -40,6 +40,7 @@ __all__ = ["DefaultEmbeddingFunction", "DefaultEmbeddingFunctionAdapter"]
 
 DEFAULT_EMBEDDING_INSTALL_COMMAND = 'pip install -U "langchain-oceanbase[pyseekdb]"'
 
+_PYSEEKDB_IMPORT_ERROR: Optional[ImportError] = None
 
 try:
     from pyseekdb import DefaultEmbeddingFunction

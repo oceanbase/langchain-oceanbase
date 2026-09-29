@@ -315,7 +315,9 @@ class OceanBaseStore(BaseStore):
             scoreless.append(row)
 
         scored.sort(key=lambda item: item[0], reverse=True)
-        kept = scored[op.offset : op.offset + op.limit]
+        kept: list[tuple[float | None, Row[Any]]] = list(
+            scored[op.offset : op.offset + op.limit]
+        )
         if len(kept) < op.limit:
             scoreless_offset = max(0, op.offset - len(scored))
             kept.extend(
@@ -557,7 +559,7 @@ class OceanBaseStore(BaseStore):
         ]
 
     def _extract_texts(
-        self, value: dict[str, Any], index: Literal[False] | list[str] | None
+        self, value: dict[str, Any], index: list[str] | None
     ) -> list[tuple[str, str]]:
         if self.index_config is None:
             return []

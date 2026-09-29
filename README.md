@@ -1,7 +1,7 @@
 # langchain-oceanbase
 
 [![PyPI version](https://badge.fury.io/py/langchain-oceanbase.svg)](https://badge.fury.io/py/langchain-oceanbase)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11–3.13](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://www.python.org/downloads/)
 
 This package contains the LangChain integration with OceanBase. See the [changelog](./CHANGELOG.md) for release notes.
 
@@ -26,12 +26,12 @@ OceanBase currently has the ability to store vectors. Users can easily perform t
 | **0.5.x** | `>=0.3,<2` | `>=0.6,<2` | `>=3,<5` | Wider floor — works on older LangGraph (`0.6.x` / LangGraph 1.x with `langgraph-checkpoint 3.x`). Stay here if you cannot move to a `langgraph-checkpoint` 4.x stack. |
 
 Guidance:
-- **On LangChain `1.x` with `langgraph-checkpoint 4.x`** (langgraph `1.0.6+`): use `0.6.x`. `langgraph-checkpoint 4.x` is what provides the `copy_thread` / `delete_for_runs` / `prune` checkpoint capabilities.
+- **On LangChain `1.x` with `langgraph-checkpoint 4.x`** (langgraph `1.0.6+`): use `0.6.4` or later in the `0.6.x` line to include the checkpoint security fixes and updated dependency minimums. `langgraph-checkpoint 4.x` is what provides the `copy_thread` / `delete_for_runs` / `prune` checkpoint capabilities.
 - **Pinned to `langgraph-checkpoint 3.x`, langgraph `<1.0.6`, or LangChain `0.3.x`**: pin `langchain-oceanbase>=0.5,<0.6`; `0.6.x` will not resolve against that stack.
 
 ```bash
 # LangChain 1.x with a langgraph-checkpoint 4.x stack
-pip install "langchain-oceanbase>=0.6,<0.7"
+pip install -U "langchain-oceanbase>=0.6.4,<0.7"
 
 # Pinned to langgraph-checkpoint 3.x / older LangGraph you cannot upgrade yet
 pip install "langchain-oceanbase>=0.5,<0.6"
@@ -46,6 +46,8 @@ pip install "langchain-oceanbase>=0.5,<0.6"
 For LangGraph applications, the recommended persistence surfaces are:
 - `OceanBaseCheckpointSaver` for graph state, replay, and time-travel workflows
 - `OceanBaseStore` for long-term memory, retrieval, and TTL-backed storage
+
+The deprecated `langchain_oceanbase.checkpoint.OceanBaseSaver` remains available for compatibility. Version `0.6.4` fixes SQL injection and cross-thread/namespace reads in that implementation. Applications still using it should upgrade; new applications should import `OceanBaseCheckpointSaver` from `langchain_oceanbase`. See the [checkpoint example](./examples/langgraph_agent.py) and [0.6.4 release notes](./CHANGELOG.md#064).
 
 The package support story is straightforward:
 - OceanBase: full pack support for vectorstore + checkpoint + store
@@ -188,12 +190,12 @@ If `connection_args` is omitted, the client defaults to `localhost:2881` with us
 ## Installation
 
 ```bash
-pip install -U langchain-oceanbase
+pip install -U "langchain-oceanbase>=0.6.4,<0.7"
 ```
 
 ### Requirements
 
-- Python >=3.11
+- Python >=3.11,<3.14
 - langchain-core >=1.0,<2
 - langgraph >=1.0.6,<2 and langgraph-checkpoint >=4.0,<5 (for `OceanBaseCheckpointSaver`)
 - pyobvector >=0.2.29 (required for database client and embedded HNSW read-after-write)
@@ -211,7 +213,7 @@ pip install -U langchain-oceanbase
 For built-in embedding functionality (no API keys required), install the optional `pyseekdb` extra:
 
 ```bash
-pip install -U "langchain-oceanbase[pyseekdb]"
+pip install -U "langchain-oceanbase[pyseekdb]>=0.6.4,<0.7"
 ```
 
 It provides:
@@ -607,6 +609,6 @@ See `CONTRIBUTING.md` for detailed developer setup and the PR process. When subm
 - Target `develop` for regular work (`feature/*`, `bugfix/*`, `chore/*`, `docs/*`, `refactor/*`, `test/*`)
 - Use `release/*` or `hotfix/*` as the normal PR sources into `main`
 - Dependabot version updates now target `develop`
-- Dependabot security updates still follow the GitHub default branch until a repo admin switches the default branch from `main` to `develop`
+- Dependabot security updates follow the GitHub default branch, currently `develop`
 - Reference the issue (e.g., `Closes #43`) in the PR body
 - Run linters and tests locally

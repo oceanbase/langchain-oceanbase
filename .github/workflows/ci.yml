@@ -22,6 +22,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  dependencies:
+    name: Dependency Compatibility (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.1.3
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - name: Check lock and all dependency groups
+        run: |
+          poetry check --lock
+          poetry install --with dev,test,lint,typing --all-extras --no-interaction
+          poetry run python -m pip check
+          poetry build
+
   lint:
     name: Lint and Type Check
     runs-on: ubuntu-latest
@@ -57,7 +85,7 @@ jobs:
         run: |
           poetry run ruff check langchain_oceanbase/
           poetry run ruff format langchain_oceanbase/ --check
-          poetry run mypy langchain_oceanbase/ --cache-dir .mypy_cache || true
+          poetry run mypy langchain_oceanbase/ --cache-dir .mypy_cache
 
   test:
     name: Test Suite (${{ matrix.name }})
@@ -93,7 +121,7 @@ jobs:
             mode: mini
             runs-comprehensive: true
             upgrade-latest-stack: false
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -109,7 +137,7 @@ jobs:
             mode: mini
             runs-comprehensive: true
             upgrade-latest-stack: false
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -157,7 +185,7 @@ jobs:
             mode: mini
             runs-comprehensive: false
             upgrade-latest-stack: true
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -173,7 +201,7 @@ jobs:
             mode: mini
             runs-comprehensive: false
             upgrade-latest-stack: true
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -398,11 +426,7 @@ jobs:
           set -euo pipefail
           report_path="${RUNNER_TEMP}/unit-tests-${{ matrix.artifact-suffix }}.xml"
           poetry run pytest \
-            tests/unit_tests/test_checkpointer_async_api.py \
-            tests/unit_tests/test_checkpointer_mysql_compat.py \
-            tests/unit_tests/test_legacy_checkpoint_saver.py \
-            tests/unit_tests/test_store.py \
-            tests/unit_tests/test_vectorstore_standard.py \
+            tests/unit_tests/ \
             -v --tb=short --junitxml="$report_path"
 
       - name: Run comprehensive tests
@@ -650,6 +674,7 @@ jobs:
 
       - name: Test embedding functionality
         run: |
+          poetry run python -c "from pyseekdb import DefaultEmbeddingFunction"
           set -euo pipefail
           report_path="${RUNNER_TEMP}/embedding-vectorization.xml"
           poetry run pytest tests/integration_tests/test_embedding_vectorization.py \
@@ -676,7 +701,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, test, test-embedding]
+    needs: [dependencies, lint, test, test-embedding]
     if: always()
 
     steps:
@@ -706,6 +731,7 @@ jobs:
           fail-on-error: false
 
       - name: Write summary
+        if: always()
         run: |
           python3 .github/scripts/summarize_junit.py "${{ runner.temp }}/all-results"
           {
@@ -715,6 +741,17 @@ jobs:
             echo "| Job | Status |"
             echo "|-----|--------|"
             echo "| Lint | ${{ needs.lint.result }} |"
+            echo "| Dependencies | ${{ needs.dependencies.result }} |"
             echo "| DB Tests | ${{ needs.test.result }} |"
             echo "| Embedding | ${{ needs.test-embedding.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require successful jobs
+        if: always()
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          EMBEDDING_RESULT: ${{ needs.test-embedding.result }}
+        run: |
+          python3 .github/scripts/check_job_results.py

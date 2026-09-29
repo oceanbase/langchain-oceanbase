@@ -202,8 +202,8 @@ class OceanBaseAIFunctions:
     def __init__(
         self,
         connection_args: Optional[Dict[str, Any]] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """Initialize the OceanBase AI functions client.
 
         Args:
@@ -572,13 +572,14 @@ class OceanBaseAIFunctions:
                 )
 
                 scores_json = self._execute_sql(sql_str)
-                if scores_json is not None:
-                    # Log the actual format returned from database for debugging
-                    logger.debug(
-                        f"AI_RERANK batch returned type: {type(scores_json)}, value: {scores_json}"
-                    )
-                    parsed_result = self._parse_rerank_result(scores_json, documents)
-                    return self._format_rerank_results(parsed_result, top_k)
+                if scores_json is None:
+                    raise ValueError("AI_RERANK batch returned no scores")
+                # Log the actual format returned from database for debugging
+                logger.debug(
+                    f"AI_RERANK batch returned type: {type(scores_json)}, value: {scores_json}"
+                )
+                parsed_result = self._parse_rerank_result(scores_json, documents)
+                return self._format_rerank_results(parsed_result, top_k)
             except Exception as batch_error:
                 logger.warning(
                     f"Batch rerank failed, trying individual rerank: {batch_error}"
