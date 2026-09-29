@@ -22,7 +22,7 @@ except ImportError:
     CheckpointMetadata = None
     CheckpointTuple = None
 from pyobvector import ObVecClient
-from sqlalchemy import BLOB, Column, String
+from sqlalchemy import BLOB, Column, String, text
 
 from langchain_oceanbase.vectorstores import DEFAULT_OCEANBASE_CONNECTION
 
@@ -136,6 +136,11 @@ class OceanBaseSaver(BaseCheckpointSaver):
                 vidxs=None,
             )
 
+    def _select(self, sql: str, params: Dict[str, Any]) -> list[Any]:
+        """Execute a bound query and materialize rows before releasing the connection."""
+        with self.client.engine.connect() as conn:
+            return list(conn.execute(text(sql), params).fetchall())
+
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
 
@@ -150,65 +155,32 @@ class OceanBaseSaver(BaseCheckpointSaver):
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"].get("checkpoint_id")
+        table_name = self.client.engine.dialect.identifier_preparer.quote(
+            self.table_name
+        )
+        params = {"thread_id": thread_id, "checkpoint_ns": checkpoint_ns}
+        sql = f"""
+            SELECT checkpoint, metadata, parent_checkpoint_id, checkpoint_id
+            FROM {table_name}
+            WHERE thread_id = :thread_id AND checkpoint_ns = :checkpoint_ns
+        """
 
         if checkpoint_id:
-            # Get specific checkpoint
-            res = self.client.get(
-                table_name=self.table_name,
-                ids=[thread_id, checkpoint_ns, checkpoint_id],
-                output_column_name=["checkpoint", "metadata", "parent_checkpoint_id"],
-            )
-            rows = res.fetchall()
+            # ObVecClient.get(ids=...) only filters single-column primary keys.
+            sql += " AND checkpoint_id = :checkpoint_id"
+            params["checkpoint_id"] = checkpoint_id
+            rows = self._select(sql, params)
         else:
-            # Get latest checkpoint
-            # Since pyobvector doesn't support complex ordering in get(), we might need a workaround or raw query
-            # For now, we assume get() can filter by thread_id and checkpoint_ns, but we likely need to fetch all
-            # and sort in memory if the client doesn't support 'order by'.
-            # A better approach with pyobvector might be to perform a vector search or use raw SQL if exposed.
-            # Assuming we can use SQL via client.perform_raw_text_sql (if available) or fallback to fetching.
-
-            # HACK: Using sqlalchemy session from client if available, or raw sql
-            # pyobvector's client might expose a way to execute raw SQL.
-            # If not, we have to fetch all checkpoints for the thread and sort.
-            # Given we are "superpowers", let's try to be efficient.
-            # But for safety and API limits, let's try to fetch recent ones.
-            # Since we can't easily do "latest" without SQL, let's fetch by thread_id and sort in Python.
-            # WARNING: This is inefficient for long threads. Real implementation should use SQL ORDER BY.
-
-            # Using a simplified approach: fetch all for thread (assuming client supports partial key lookup)
-            # If pyobvector.get requires exact PKs, we are in trouble.
-            # Let's assume we can use a where clause or similar.
-            # Looking at OceanBaseChatMessageHistory, it uses client.get() without IDs? No, it uses ids=None.
-            # But here we have a composite PK.
-
-            # Strategy: Use perform_raw_text_sql to get the latest checkpoint efficiently
-            sql = f"""
-                SELECT checkpoint, metadata, parent_checkpoint_id, checkpoint_id
-                FROM {self.table_name}
-                WHERE thread_id = '{thread_id}' AND checkpoint_ns = '{checkpoint_ns}'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """
+            sql += " ORDER BY created_at DESC LIMIT 1"
             try:
-                res = self.client.perform_raw_text_sql(sql)
-                rows = res.fetchall()
+                rows = self._select(sql, params)
             except Exception:
-                # Fallback: connection might not support raw sql directly or method name differs
-                # Let's try to infer from common obvector usage.
-                # If raw sql fails, we might need to implement a 'list' like approach
                 return None
 
         if not rows:
             return None
 
-        row = rows[0]
-        # Depending on query, row structure differs
-        if checkpoint_id:
-            # get() returns specific columns
-            checkpoint_blob, metadata_blob, parent_checkpoint_id = row
-        else:
-            # raw sql returns: checkpoint, metadata, parent_checkpoint_id, checkpoint_id
-            checkpoint_blob, metadata_blob, parent_checkpoint_id, checkpoint_id = row
+        checkpoint_blob, metadata_blob, parent_checkpoint_id, checkpoint_id = rows[0]
 
         checkpoint = pickle.loads(checkpoint_blob)
         metadata = pickle.loads(metadata_blob)
@@ -218,16 +190,25 @@ class OceanBaseSaver(BaseCheckpointSaver):
         # Need to find writes for this checkpoint
         # Writes PK: thread_id, checkpoint_ns, checkpoint_id, task_id, idx
         # We need all writes where thread_id, checkpoint_ns, checkpoint_id match
+        writes_table_name = self.client.engine.dialect.identifier_preparer.quote(
+            self.writes_table_name
+        )
         sql_writes = f"""
             SELECT task_id, channel, type, value
-            FROM {self.writes_table_name}
-            WHERE thread_id = '{thread_id}'
-              AND checkpoint_ns = '{checkpoint_ns}'
-              AND checkpoint_id = '{checkpoint_id}'
+            FROM {writes_table_name}
+            WHERE thread_id = :thread_id
+              AND checkpoint_ns = :checkpoint_ns
+              AND checkpoint_id = :checkpoint_id
         """
         try:
-            res_writes = self.client.perform_raw_text_sql(sql_writes)
-            rows_writes = res_writes.fetchall()
+            rows_writes = self._select(
+                sql_writes,
+                {
+                    "thread_id": thread_id,
+                    "checkpoint_ns": checkpoint_ns,
+                    "checkpoint_id": checkpoint_id,
+                },
+            )
             for r in rows_writes:
                 t_id, channel, _, val_blob = r
                 val = pickle.loads(val_blob)
@@ -269,39 +250,52 @@ class OceanBaseSaver(BaseCheckpointSaver):
             config (Optional[RunnableConfig]): The configuration to use for listing checkpoints.
             filter (Optional[Dict[str, Any]]): Additional filtering criteria.
             before (Optional[RunnableConfig]): List checkpoints before this configuration.
-            limit (Optional[int]): The maximum number of checkpoints to return.
+            limit (Optional[int]): A non-negative integer. Zero or None means no limit.
+
+        Raises:
+            ValueError: If limit is not a non-negative integer.
 
         Yields:
             Iterator[CheckpointTuple]: An iterator over the retrieved checkpoint tuples.
         """
+        if limit is not None and (type(limit) is not int or limit < 0):
+            raise ValueError("limit must be a non-negative integer")
+
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
+        table_name = self.client.engine.dialect.identifier_preparer.quote(
+            self.table_name
+        )
+        params: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+        }
 
         sql = f"""
             SELECT checkpoint, metadata, parent_checkpoint_id, checkpoint_id
-            FROM {self.table_name}
-            WHERE thread_id = '{thread_id}' AND checkpoint_ns = '{checkpoint_ns}'
+            FROM {table_name}
+            WHERE thread_id = :thread_id AND checkpoint_ns = :checkpoint_ns
         """
 
         if before:
             before_id = before["configurable"].get("checkpoint_id")
             if before_id:
-                # We need to find created_at of before_id to filter efficiently, or just rely on IDs not being time-sorted?
-                # Checkpoint IDs are usually UUIDs, so not sortable. Created_at is sortable.
-                # But here we might just filter by 'created_at < (select created_at from ... where id=before_id)'
-                # For simplicity in this v1, we might skip complex 'before' logic or do it in memory if list is small.
-                # Let's try to do it via SQL subquery if possible.
-                subquery = f"SELECT created_at FROM {self.table_name} WHERE checkpoint_id = '{before_id}'"
+                subquery = f"""
+                    SELECT created_at FROM {table_name}
+                    WHERE thread_id = :thread_id AND checkpoint_ns = :checkpoint_ns
+                      AND checkpoint_id = :before_id
+                """
                 sql += f" AND created_at < ({subquery})"
+                params["before_id"] = before_id
 
         sql += " ORDER BY created_at DESC"
 
         if limit:
-            sql += f" LIMIT {limit}"
+            sql += " LIMIT :limit"
+            params["limit"] = limit
 
         try:
-            res = self.client.perform_raw_text_sql(sql)
-            rows = res.fetchall()
+            rows = self._select(sql, params)
         except Exception:
             return
 

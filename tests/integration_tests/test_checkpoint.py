@@ -157,3 +157,58 @@ def test_put_writes(saver):
     w1 = next(w for w in cp_tuple.pending_writes if w[1] == "channel-1")
     assert w1[0] == "task-1"
     assert w1[2] == "value-1"
+
+
+@pytest.mark.parametrize("suffix", ["", "'\\; -- :bind 雪"])
+def test_legacy_read_isolation_and_bound_values(saver, suffix):
+    """Exercise bound keys, pending writes and pagination on the real backend."""
+    from sqlalchemy import text
+
+    keys = {"thread_id": "thread" + suffix, "checkpoint_ns": "namespace" + suffix}
+    configs = []
+    for thread_keys, checkpoint_id, created_at in [
+        ({"thread_id": "other", "checkpoint_ns": ""}, "cp-2" + suffix, "9000"),
+        (keys, "cp-1" + suffix, "1000"),
+        (keys, "cp-2" + suffix, "2000"),
+    ]:
+        checkpoint = {
+            "v": 1,
+            "id": checkpoint_id,
+            "ts": "2026-01-01T00:00:00+00:00",
+            "channel_values": {"messages": ["private state"]},
+            "channel_versions": {},
+            "versions_seen": {},
+        }
+        config = saver.put({"configurable": thread_keys}, checkpoint, {}, {})
+        configs.append(config)
+        with saver.client.engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"UPDATE {saver.table_name} SET created_at = :created_at "
+                    "WHERE thread_id = :thread_id AND checkpoint_ns = :checkpoint_ns "
+                    "AND checkpoint_id = :checkpoint_id"
+                ),
+                {**config["configurable"], "created_at": created_at},
+            )
+
+    first, second = configs[1:]
+    saver.put_writes(second, [("messages", "safe value")], "task-1")
+    for config in [second, {"configurable": keys}]:
+        result = saver.get_tuple(config)
+        assert result is not None
+        assert result.checkpoint["id"] == "cp-2" + suffix
+        assert result.pending_writes == [("task-1", "messages", "safe value")]
+    assert [item.config for item in saver.list(second, limit=1)] == [second]
+    assert [item.config for item in saver.list(second, before=second)] == [first]
+
+    for field in ["thread_id", "checkpoint_ns", "checkpoint_id"]:
+        config = {"configurable": {**second["configurable"], field: "' OR '1'='1"}}
+        assert saver.get_tuple(config) is None
+        if field != "checkpoint_id":
+            config["configurable"].pop("checkpoint_id")
+            assert saver.get_tuple(config) is None
+            assert list(saver.list(config)) == []
+    before = {"configurable": {"checkpoint_id": "missing' OR '1'='1"}}
+    assert list(saver.list(second, before=before)) == []
+    with pytest.raises(ValueError, match="limit"):
+        list(saver.list(second, limit="1 OFFSET 1"))
