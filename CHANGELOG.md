@@ -9,7 +9,8 @@ All notable changes to this project are documented in this file.
 - Restore Poetry-based dependency automation by removing an unused, empty `uv.lock`.
 - Fall back to per-document reranking when the batch `ai_rerank` query returns no result.
 - Enforce type-check failures and CI job outcomes, run the complete unit suite, and validate dependency installation and package builds on Python 3.11–3.13.
-- Include dependency refreshes for LangChain Core, LangGraph, LangChain standard tests, `pylibseekdb`, `dashscope`, `virtualenv`, and Ruff.
+- Refresh locked dependencies, including LangChain Core `1.6.5`, LangGraph `1.2.12`, LangChain standard tests `1.1.9`, `dashscope` `1.27.7`, `virtualenv` `21.12.1`, Ruff `0.16.9`, and the `pylibseekdb` runtime.
+- Update README upgrade guidance for `0.6.4`, clarify the legacy checkpoint saver status, and document the supported Python 3.11–3.13 range.
 
 ## [0.6.3]
 
