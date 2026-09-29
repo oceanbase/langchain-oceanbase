@@ -824,14 +824,14 @@ ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
 name = "dashscope"
-version = "1.27.5"
+version = "1.27.7"
 description = "dashscope client sdk library"
 optional = false
 python-versions = ">=3.9"
 groups = ["test"]
 files = [
-    {file = "dashscope-1.27.5-py3-none-any.whl", hash = "sha256:54581f45ec5ad930c9cc42ca572ce2d8e9d38262fe0d6157b1207462318543b3"},
-    {file = "dashscope-1.27.5.tar.gz", hash = "sha256:bf64e06eb60ffcac92d2840b7ecc72a00b81a395b23107b2727b971b8285375b"},
+    {file = "dashscope-1.27.7-py3-none-any.whl", hash = "sha256:e034664fc78d487bd949753807abc2640c154cfcecff7a59b8b2a4b6ec156bf9"},
+    {file = "dashscope-1.27.7.tar.gz", hash = "sha256:6736697d8308f051a19616f64f85f7bd3d52abf52e9689a66ea18642df3cc757"},
 ]
 
 [package.dependencies]
