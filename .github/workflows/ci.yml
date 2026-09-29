@@ -93,7 +93,7 @@ jobs:
             mode: mini
             runs-comprehensive: true
             upgrade-latest-stack: false
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -109,7 +109,7 @@ jobs:
             mode: mini
             runs-comprehensive: true
             upgrade-latest-stack: false
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -157,7 +157,7 @@ jobs:
             mode: mini
             runs-comprehensive: false
             upgrade-latest-stack: true
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
@@ -173,7 +173,7 @@ jobs:
             mode: mini
             runs-comprehensive: false
             upgrade-latest-stack: true
-            checkpoint-target: tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
+            checkpoint-target: tests/integration_tests/test_checkpoint.py tests/integration_tests/test_checkpointer.py tests/integration_tests/test_checkpoint_conformance.py
             vectorstore-target: tests/integration_tests/test_vectorstore_standard.py tests/integration_tests/test_vectorstores.py
             store-target: tests/integration_tests/test_store.py
             chat-history-target: tests/integration_tests/test_chat_message_histories.py
