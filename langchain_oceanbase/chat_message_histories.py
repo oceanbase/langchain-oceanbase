@@ -272,8 +272,8 @@ class OceanBaseChatMessageHistory(BaseChatMessageHistory):
 
         return messages
 
-    @property  # type: ignore[override]
-    def messages(self) -> List[BaseMessage]:
+    @property
+    def messages(self) -> List[BaseMessage]:  # type: ignore[override]
         """Property to retrieve all messages (required by BaseChatMessageHistory)."""
         return self.get_messages()
 
